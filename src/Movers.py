@@ -11,6 +11,7 @@ import os
 import numpy as np
 import pandas as pd
 
+
 class Mover(ABC):
 
     def __init__(self,name):
@@ -99,6 +100,7 @@ class Mover(ABC):
         :return:
         """
         raise NotImplementedError('The mover ' + self.name + ' must implement the action_to_command method')
+
 
 class StaticCircleObstacle(Mover,ABC):
 
@@ -318,9 +320,14 @@ class RiverBoat(Mover,ABC):
         self.state_dict['mr'] = 0.0
         self.state_dict['my_p'] = 0.0
 
-
-
     def set_control(self, power, propeller_angle):
+        """
+        sets the power level (a.k.a. throttle setting) and the propeller angle of the boat. This is typically used in
+        the simulation loop to allow for control of the boat
+        :param power: the absolute desired power setting [watt]
+        :param propeller_angle: the angle of the propeller relative to the longitudinal axis of the boat [rad]
+        :return: void
+        """
 
         # check for bounds
         if power > self.state_dict['power_max']:
@@ -363,12 +370,22 @@ class RiverBoat(Mover,ABC):
         cy = np.sign(x) * (0.710204 - 0.297196 * np.abs(x) + 0.0857296 * np.abs(x * x)) * np.sin(
             np.pi * 2.0 * np.power(np.abs(x) / np.pi, 1.05))
 
-        # perpendicualr side force coefficinet
+        # perpendicular side force coefficient
         cr = 0.904313
 
         return cd, cs, cy, cr
 
     def get_hydro_coeffs(self, x):
+        """
+        get the hydrodynamic coefficients that act on the boat from the water and the relative current induced by motion
+
+        :param x: relative flow angle [deg]
+        :return:
+            cd (axial) - coefficient of axial flow
+            cs (side) - coefficient of lateratl flow
+            cy (moment) - coefficent for induced moment
+            cr (normal side) - coefficient for when flow is directly perpendicular
+        """
 
         # drag coefficient
         cd = 0.245219 - 0.93044 * np.abs(x) + 0.745752 * np.abs(x * x) - 0.15915 * np.power(np.abs(x), 3.0) + \
@@ -380,16 +397,17 @@ class RiverBoat(Mover,ABC):
         # yaw coefficient
         cy = np.sign(x) * (0.322986 + 0.317964 * np.abs(x) - 0.1021844 * x * x) * np.sin(2.0 * np.abs(x))
 
-        #
+        # perpendicular side force coefficient
         cr = 2.545759
 
         return cd, cs, cy, cr
 
     def get_moment_hull(self, cr, vy):
         """
+        get the moment induced on the hull of the boat by the water due to the boat rotating around is vertical axis
 
         :param cr: side force at phi_eff at 90[deg]. The flow velocity in the normal direction of the hull while spinning
-        :param vy: effective transvers velocity
+        :param vy: effective transverse velocity
         :return:
         """
 
@@ -419,7 +437,14 @@ class RiverBoat(Mover,ABC):
         return mr
 
     def step_euler(self, time):
+        """
+        steps the boat forward in time using an Euler integration scheme. The control (power and propeller angle)
+        should be set ahead of calling this function. The forces, and moments of the boat are calculated and these
+        are used to update the state of the boat
 
+        :param time: the time [s] of the simulation. Only used for data logging
+        :return:
+        """
         # correct power if there is no fuel
         if self.state_dict['fuel'] <= 0.0:
             self.state_dict['power'] = 0.0
@@ -534,12 +559,9 @@ class RiverBoat(Mover,ABC):
 
         cd_aero, cs_aero, cy_aero, cr_aero = self.get_aero_coeffs(phi_eff_air_local)
 
-        # f_d_air = -np.sign(v_eff_air_local[0])* 0.5*rho_air*v_eff_air_local_mag *v_eff_air_local_mag*self.state_dict['area_air']*cd_aero
         f_d_air = 0.5 * rho_air * v_eff_air_local_mag * v_eff_air_local_mag * self.state_dict['area_air'] * cd_aero
-        # f_s_air = -np.sign(v_eff_air_local[1])*0.5 * rho_air * v_eff_air_local_mag * v_eff_air_local_mag * self.state_dict['area_air']* cs_aero
         f_s_air = 0.5 * rho_air * v_eff_air_local_mag * v_eff_air_local_mag * self.state_dict['area_air'] * cs_aero
 
-        # TODO check this
         m_air = -0.5 * cy_aero * self.state_dict['area_air'] * self.state_dict[
             'hull_length'] * rho_air * v_eff_air_local_mag * v_eff_air_local_mag
 
@@ -559,10 +581,8 @@ class RiverBoat(Mover,ABC):
         self.state_dict['psi_eff_water'] = phi_eff_water_local
         cd_hydro, cs_hydro, cy_hydro, cr_hydro = self.get_hydro_coeffs(phi_eff_water_local)
 
-        # f_d_hydro = -np.sign(v_eff_water_local[0])*0.5*rho_water*v_eff_water_local_mag *v_eff_water_local_mag *self.state_dict['area_water']*cd_hydro
         f_d_hydro = 0.5 * rho_water * v_eff_water_local_mag * v_eff_water_local_mag * \
                     self.state_dict['area_water'] * cd_hydro
-        # f_s_hydro = -np.sign(v_eff_water_local[1])*0.5 * rho_water * v_eff_water_local_mag  * v_eff_water_local_mag  * self.state_dict['area_water'] * cs_hydro
         f_s_hydro = 0.5 * rho_water * v_eff_water_local_mag * v_eff_water_local_mag * \
                     self.state_dict['area_water'] * cs_hydro
 
@@ -572,11 +592,11 @@ class RiverBoat(Mover,ABC):
         mr = self.get_moment_hull(cr_hydro, self.state_dict['v_yp'])
 
         # propulsion forces
-
         fx_p = thrust * np.cos(self.state_dict['delta'])
         fy_p = thrust * np.sin(self.state_dict['delta'])
         my_p = -fy_p * self.state_dict['hull_length'] / 2.0
 
+        # save all of the forces and moments
         self.state_dict['f_d_air'] = f_d_air
         self.state_dict['f_s_air'] = f_s_air
         self.state_dict['m_air'] = m_air
@@ -610,7 +630,14 @@ class RiverBoat(Mover,ABC):
         return alpha
 
     def get_angle_between_vectors(self, v1, v2, keep_sign):
+        """
+        uses the dot product or cross product to get the angle between two vectors. 2D vectors are assumed for this
 
+        :param v1: first vector
+        :param v2: second vector
+        :param keep_sign: boolean for if the sign of the angle should be maintained or ignored
+        :return: angle between vectors 1 and 2 [rad]
+        """
         if keep_sign:
             # the sign the angle matters
             angle = np.arctan2(v2[1] * v1[0] - v2[0] * v1[1], v1[0] * v2[0] + v1[1] * v2[1])
@@ -743,7 +770,17 @@ class RiverBoat(Mover,ABC):
         return thrust
 
     def thrust_helper(self, v, v0, alpha_d, power, rho, area):
+        """
+        calculates the error of the thrust equation given the current guess for total induced velocity
 
+        :param v: current guess for total induced velocity [m/s]
+        :param v0: magnitude of the velocity of the air flowing into the rotor disk not due to the rotor [m/s]
+        :param alpha_d: the effective angle of incidence of the fluid flowing into the rotor disk [rad]
+        :param power: the power applied to the rotor [watt]
+        :param rho: the density of the fluid the rotor is in [kg/m^3]
+        :param area: the disk area of the rotor [m^2]
+        :return: error
+        """
         vh = self.vh_calc(power, rho, area)
 
         p1 = np.power(v / vh, 4.0) + 2.0 * (v0 / vh) * np.power(v / vh, 3.0) * np.sin(alpha_d) + np.power(v0 / vh,
@@ -754,20 +791,15 @@ class RiverBoat(Mover,ABC):
         return p1 * p2 - 1
 
     def vh_calc(self, power, rho, area):
+        """
+        calculates the induced velocity in hover based on the current operating conditions of rotor/propeller
+
+        :param power: power delivered to the rotor [watt]
+        :param rho: density of the fluid in the rotor [kg/m^3]
+        :param area: disk area of the rotor [m^2]
+        :return:
+        """
         return np.power(power / (2.0 * rho * area), 1.0 / 3.0)
-
-    def update_eq(self, v, v_mag, alpha_d):
-
-        g1 = np.sqrt(v_mag * v_mag + 2.0 * v_mag * np.sin(alpha_d) * v + v * v)
-        g2 = v_mag * np.sin(alpha_d) + v
-
-        v_new = v - (v - self.state_dict['power'] * self.state_dict['fom'] / (
-                    2.0 * self.state_dict['density_water'] * self.state_dict['prop_area']) / (g1 * g2)) / (
-                            1.0 + self.state_dict['power'] * self.state_dict['fom'] / (
-                                2.0 * self.state_dict['density_water'] * self.state_dict['prop_area']) * (
-                                        (g2 * g2 + g1 * g1 / g1) / (g1 * g2) ** 2))
-
-        return v_new
 
     @staticmethod
     def get_default(delta_t):
@@ -798,7 +830,6 @@ class RiverBoat(Mover,ABC):
         fuel = 10.0  # [kg]
         # bsfc = 5.0e-8  # [kg/w-s] this is the realistic value
         bsfc = 5.0e-7  # [kg/w-s] this is the inefficient value for use
-        # bsfc = 1.05e-5  # [kg/w-s] this is the inefficient value for use
         rb = RiverBoat(name, area_air, area_water, bsfc, delta, delta_max, delta_t, density_air, density_water, fom,
                        fuel, fuel_capacity
                        , hull_len, hull_width, mass, moi, power, power_max, psi, prop_diam)

@@ -1,0 +1,11 @@
+*.png
+*.pptx
+*.pdf
+*.docx
+*.mp4
+BiHarmonicSurface/
+LitReview/
+PotentialNASA/
+Presentations/
+torch_DRL_git_pchrist/
+torch_DRL_git_sweetice/

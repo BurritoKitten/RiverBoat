@@ -59,7 +59,8 @@ class PDController(Controller):
                    [0.0, 0.0, 1.0]]
         rot_mat = np.reshape(rot_mat, (3, 3))
 
-        diff = np.subtract(nav_point[0:3], [x,y,phi])
+        #diff = np.subtract(nav_point[0:3], [x,y,phi])
+        diff = 0
 
         error = np.matmul(rot_mat, diff)
 

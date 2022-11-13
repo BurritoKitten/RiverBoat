@@ -16,14 +16,16 @@ class Mover(ABC):
 
     def __init__(self,name):
 
-        self.name = name
-        self.state_dict = dict()
+        self.state_dict = OrderedDict()
+        self.state_dict['name'] = name
         self.sensors = []
         self.history = pd.DataFrame()
         self.can_learn = False
+        self.observation_keys = []
+        self.observation_df = pd.DataFrame
 
     @abstractmethod
-    def step(self):
+    def step(self, time):
         """
         steps the state of the mover object forward by one time step.
         :return:
@@ -67,11 +69,14 @@ class Mover(ABC):
 
     def update_sensors(self, mover_dict):
         """
-        loops over each sensor in the mover and updates the measurements for each sensor
+        loops over each sensor in the mover and updates the measurements for each sensor.
         :return:
         """
+
+        # sensors
         for sensor in self.sensors:
-            sensor.update_measurements(mover_dict)
+            sensor.calc_measurements(mover_dict)
+
 
     @abstractmethod
     def get_history(self):
@@ -94,24 +99,27 @@ class Mover(ABC):
         raise NotImplementedError('The mover '+self.name+' must implement the normalize_state method')
 
     @abstractmethod
-    def action_to_command(self):
+    def derived_measurements(self, destination):
+        raise NotImplementedError('The mover ' + self.name + ' must implement the derived measurements method')
+
+    @staticmethod
+    def create_from_yaml(name,mover_dict):
         """
-        takes an action from agent and converts it into the command to control the mover
+        is given a dictionary as a subpart of the total environment hyperparameters, a mover is created and has its
+        properties changed based on the file.
         :return:
         """
-        raise NotImplementedError('The mover ' + self.name + ' must implement the action_to_command method')
+        raise NotImplementedError('The mover must implement the create_from_yaml method')
 
 
 class StaticCircleObstacle(Mover,ABC):
 
-    def __init__(self, name, radius, domain):
+    def __init__(self, name, radius):
         """
         creates a Circle shaped obstacle that does not move during the simulation.
 
         :param name: a string that allows for easy differentiaion and logging of the mover
         :param radius: the radius of the circular obstacle in meters
-        :param domain: a tuple of shape (2,2) that denots the min and max, x and y values for the obstacles center to
-            be in
         """
         # instantiate mover
         super().__init__(name)
@@ -121,9 +129,9 @@ class StaticCircleObstacle(Mover,ABC):
         self.state_dict['x_pos_norm'] = 0.0  # initial normalized arbitrary value for the x position of the circle
         self.state_dict['y_pos_norm'] = 0.0  # initial normalized arbitrary value for the y position of the circle
         self.state_dict['radius'] = radius  # radius in meters of the obstacle
-        self.set_domain(domain)
+        #self.set_domain(domain)
 
-    def step(self):
+    def step(self, time):
         # no changes are made as this is a static circle
         pass
 
@@ -149,17 +157,46 @@ class StaticCircleObstacle(Mover,ABC):
         :return:
         """
         empty_data = np.zeros((num_steps, 2))
-        self.history = pd.DataFrame(data=empty_data, columns=[self.name+'_x',self.name+'_y'])
+        self.history = pd.DataFrame(data=empty_data, columns=[self.state_dict['name']+'_x',self.state_dict['name']+'_y'])
 
     def trim_history(self, step_num):
         self.history.drop(range(step_num, len(self.history)), inplace=True)
+
+    def get_history(self):
+        pass
+
+    def derived_measurements(self, destination):
+        """
+        calculates distance from the obstacle to the destination. This mover is immobile so this is not needed
+        :param destination:
+        :return:
+        """
+        pass
+
+    @staticmethod
+    def create_from_yaml(name,input_dict):
+        """
+        creates a static mover from the original input file.
+
+        :param name: the name of the mover. Must be unique to work
+        :param input_dict: a dictionary of hyperparameters to set
+        :return:
+        """
+        sc = StaticCircleObstacle(name=name,radius=None)
+        for key, value in input_dict.items():
+
+            if key == 'radius':
+                sc.state_dict['radius'] = value
+
+        return sc
 
 
 class RiverBoat(Mover,ABC):
 
     def __init__(self, name, area_air, area_water, bsfc, delta, delta_max, delta_t, density_air, density_water, fom,
                  fuel, fuel_capacity, hull_len, hull_width, mass, moi, power, power_max, psi, prop_diam):
-        self.state_dict = OrderedDict()
+        # instantiate mover
+        super().__init__(name)
         self.initalize_in_state_dict()
 
         # --------------------------------------------------------------------------------------------------------------
@@ -235,8 +272,12 @@ class RiverBoat(Mover,ABC):
         self.state_dict['area_air'] = 0.0
         # water projected area [m^2]
         self.state_dict['area_water'] = 0.0
+        # distance to the destination [m]
+        self.state_dict['dest_dist'] = 0.0
         # moment of interia of the boat []
         self.state_dict['moi'] = 0.0
+        # angle to the destiation relative to the boats longitudnal axis [rad]
+        self.state_dict['mu'] = 0.0
         # lenght of the hull of the boat
         self.state_dict['hull_length'] = 0.0
         # the widest width of the hull of the boat
@@ -247,6 +288,8 @@ class RiverBoat(Mover,ABC):
         self.state_dict['psi_eff_air'] = 0.0
         # effective angle of incidence of the water
         self.state_dict['psi_eff_water'] = 0.0
+        # angle between the boat and the destination [rad]
+        self.state_dict['theta'] = 0.0
 
         # --------------------------------------------------------------------------------------------------------------
         # velocity data
@@ -309,15 +352,25 @@ class RiverBoat(Mover,ABC):
         # --------------------------------------------------------------------------------------------------------------
         # forces and moments
         # --------------------------------------------------------------------------------------------------------------
+        # axial air force
         self.state_dict['f_d_air'] = 0.0
+        # lateral air force
         self.state_dict['f_s_air'] = 0.0
+        # lateral water force
         self.state_dict['f_s_water'] = 0.0
+        # axial water force
         self.state_dict['f_d_water'] = 0.0
+        # longitudinal force of propeller in boats reference frame
         self.state_dict['fx_p'] = 0.0
+        # lateral force of propeller in boats reference frame
         self.state_dict['fy_p'] = 0.0
+        # moment induced by the air
         self.state_dict['m_air'] = 0.0
+        # moment indueced by the water
         self.state_dict['m_water'] = 0.0
+        # moment at 90 [deg] (pure moment?) need to describe this better
         self.state_dict['mr'] = 0.0
+        # moment induce by the propeller
         self.state_dict['my_p'] = 0.0
 
     def set_control(self, power, propeller_angle):
@@ -436,7 +489,7 @@ class RiverBoat(Mover,ABC):
 
         return mr
 
-    def step_euler(self, time):
+    def step(self, time):
         """
         steps the boat forward in time using an Euler integration scheme. The control (power and propeller angle)
         should be set ahead of calling this function. The forces, and moments of the boat are calculated and these
@@ -800,6 +853,101 @@ class RiverBoat(Mover,ABC):
         :return:
         """
         return np.power(power / (2.0 * rho * area), 1.0 / 3.0)
+
+    @staticmethod
+    def create_from_yaml(name,input_dict):
+        """
+        give a subset of the hyper-parameter input set, create a river boat. The default boat can be used, and
+        modifications to that boat can be applied to the boat's model parameters. If a full custom boat is required,
+        each model parameter will need to be modified at this time after creating the default boat. The boat needs to
+        be created with default before modifications can be applied.
+
+        :param input_dict: dictionary specifying how to create and modify the boat
+        :return: the created boat
+        """
+        rb = None
+        for key, value in input_dict.items():
+
+            if key == 'modifications':
+                if rb is None:
+                    raise ValueError('A boat must be created before it can be modified. Please call use_default before modifications in the input yaml file.')
+
+                # make modifications to the boat
+                for mod_name, modification in value.items():
+
+                    if rb.state_dict.get(mod_name,None) is None:
+                        raise ValueError('Cannot modify a non existent boat parameter '+ str(mod_name))
+
+                    rb.state_dict[mod_name] = modification
+
+            elif key == 'use_default':
+                # use the default riverboat.
+                rb = RiverBoat.get_default(delta_t=1.0) # default time step to be overwritten by the caller
+                rb.state_dict['name'] = name
+            elif key == 'state':
+                # state not processed here
+                observation = pd.DataFrame(columns=['name','norm_value','norm_method'])
+                for state_var_name, state_var_info in value.items():
+                    state_var_info = state_var_info.split(',')
+                    row = dict()
+                    row['name'] = state_var_name
+                    if state_var_info[0] == 'num':
+                        # max value provided
+                        row['norm_value'] = float(state_var_info[1])
+                        row['norm_method'] = state_var_info[2]
+                    elif state_var_info[0] == 'derived':
+                        # relative to a boats/movers value
+                        row['norm_value'] = rb.state_dict[state_var_info[1].replace(' ','')]
+                        row['norm_method'] = state_var_info[2]
+                    else:
+                        raise ValueError('State variable definition not valid')
+                    observation = observation.append(row, ignore_index=True)
+                rb.observation_df = observation
+            elif key == 'is_agent':
+                rb.can_learn = True
+            else:
+                raise ValueError('Unsupported input value')
+
+        return rb
+
+    #def action_to_command(self):
+    #    pass
+
+    def add_step_history(self, step_num):
+        pass
+
+    def get_history(self):
+        pass
+
+    def normalize_state(self):
+        pass
+
+    def reset_history(self, num_steps):
+        pass
+
+    def derived_measurements(self, destination):
+        """
+        given the destination, the distance and angle from the boat to the destination is calculated.
+
+        :param destination: goal state of the boat. (x,y) pair of points [m]
+        :return:
+        """
+        self.state_dict['dest_dist'] = np.sqrt(
+            (self.state_dict['x_pos'] - destination[0]) * (self.state_dict['x_pos'] - destination[0]) + (self.state_dict['y_pos'] - destination[1]) * (
+                    self.state_dict['y_pos'] - destination[1]))
+        delta_x = destination[0] - self.state_dict['x_pos']
+        delta_y = destination[1] - self.state_dict['y_pos']
+
+        self.state_dict['theta'] = np.arctan2(delta_y, delta_x)
+
+        mu1 = self.state_dict['theta'] - self.state_dict['psi']
+        if mu1 >= 0:
+            mu2 = np.pi * 2.0 - mu1  # explementary angle
+        else:
+            mu2 = np.pi * 2.0 + mu1  # explementary angle
+        mu_v = [mu1, mu2]
+        ind = np.argmin(np.abs(mu_v))
+        self.state_dict['mu'] = mu_v[ind]
 
     @staticmethod
     def get_default(delta_t):

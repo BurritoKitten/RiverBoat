@@ -29,13 +29,16 @@ class Network(nn.Module):
         # build the input and hidden layers
         self.layers = []
         for i, layer in enumerate(layer_numbers):
+
             if i == 0:
-                tmp_layer = nn.Linear(state_size, layer)
+                tmp_layer = nn.Linear(state_size, int(layer))
             else:
-                tmp_layer = nn.Linear(layer_numbers[i-1], layer)
+                tmp_layer = nn.Linear(int(layer_numbers[i-1]), int(layer))
+
+            self.layers.append(tmp_layer)
 
         # get the output layer
-        self.out = nn.Linear(layer_numbers[-1],action_size)
+        self.out = nn.Linear(int(layer_numbers[-1]),action_size)
 
         # interim activation
         hidden_active = h_params['learning_algorithm']['activation']
@@ -45,7 +48,7 @@ class Network(nn.Module):
             self.active = torch.nn.Linear()
         elif hidden_active == 'relu':
             self.active = torch.nn.ReLU()
-        elif hidden_active == 'tan_h'
+        elif hidden_active == 'tan_h':
             self.active == torch.nn.Tanh()
         else:
             raise ValueError('Activation function not currently supported')
@@ -53,7 +56,7 @@ class Network(nn.Module):
         # last layer activation
         last_active = h_params['learning_algorithm']['last_activation']
         if last_active == 'linear':
-            self.last_active = torch.nn.Linear()
+            self.last_active = None
         elif last_active == 'softmax':
             self.last_active = torch.nn.Softmax()
         else:
@@ -75,23 +78,27 @@ class Network(nn.Module):
             x = self.drop(x)
 
         x = self.out(x)
-        x = self.last_active(x)
+
+        # if not a linear output
+        if self.last_active is not None:
+            x = self.last_active(x)
 
         return x
 
     def getLoss(self):
         pass
 
+
 class LearningAlgorithms:
 
-
-    def LeaningAlgorithms(self, action_size, activation, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size):
         """
         A super class for learning algorithms. learning algorithms are the core of the agent's policy. Neural networks
         are used as the function approximators
 
         :param action_size: the number of action outputs that agent needs
         :param activation: the activation function for the first and deep layers
+        :param h_params: a dictionary for simulation configuration
         :param last_activation: the activation function for the last layer
         :param layer_numbers: The number of internal layers of the neural network
         :param loss: a string designating the loss function
@@ -101,14 +108,16 @@ class LearningAlgorithms:
 
         self.action_size = action_size
         self.activation = activation
+        self.h_params = h_params
         self.last_activation = last_activation
         self.layer_numbers = layer_numbers
         self.loss = loss
         self.state_size = state_size
 
+
 class DQN(LearningAlgorithms):
 
-    def DQN(self, action_size, activation, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size):
         """
         The agent uses a deep Q network for the agent.
 
@@ -120,13 +129,32 @@ class DQN(LearningAlgorithms):
         :param state_size: the number of inputs for the neural network
         :return:
         """
-        super().__init__(action_size, activation, last_activation, layer_numbers, loss, state_size)
+        super().__init__(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
 
         self.name = 'DQN'
 
+        # create the policy network
+        self.network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
+
+        # create the target network
+        self.target_network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
+
+    def get_output(self, inp, is_grad=False):
+        """
+        get the output from the network
+
+        :param inp: input list. Should be the observations from the simulation
+        :return:
+        """
+        if is_grad:
+            return self.network.forward(torch.Tensor(inp))
+        else:
+            with torch.no_grad():
+                return self.network.forward(torch.Tensor(inp))
+
 class DDPG(LearningAlgorithms):
 
-    def DDPG(self, action_size, activation, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, last_activation, layer_numbers, loss, state_size):
         """
         The agent uses DDPG for the agent
 

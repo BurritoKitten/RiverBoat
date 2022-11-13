@@ -83,6 +83,13 @@ class ActionOperation(ABC):
         """
         pass
 
+    @abstractmethod
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        pass
 
 class DirectControlActionDiscrete(ActionOperation):
 
@@ -107,7 +114,7 @@ class DirectControlActionDiscrete(ActionOperation):
             self.power_change_lst = [float(i) for i in power_change_lst]
 
 
-    def action_to_command(self, time, state, action_code):
+    def action_to_command(self, time, state, raw_actions):
         """
         given the index outputted by a neural network, the propeller change and power change is encoded from that.
         Those changes are returned so the caller can convert the agents network raw outputs into a change in
@@ -115,11 +122,12 @@ class DirectControlActionDiscrete(ActionOperation):
 
         :param time: the time stamp of the simulation
         :param state: the current state of the boat
-        :param action_code: index from neural network
+        :param raw_actions
         :return: propeller angle change [rad], and power change [watt]
         """
 
         # convert the code to a propeller change and a power change
+        action_code = raw_actions.numpy().argmax()
 
         if self.power_change_lst is None:
             # no power change, only the propeller is changeing
@@ -154,6 +162,15 @@ class DirectControlActionDiscrete(ActionOperation):
 
         return action_size
 
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        if self.power_change_lst is None:
+            return True
+
+        return False
 
 class DirectControlActionContinous(ActionOperation):
 
@@ -212,6 +229,15 @@ class DirectControlActionContinous(ActionOperation):
 
         return action_size
 
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        if self.max_power is None:
+            return True
+
+        return False
 
 class PathActionOperation(ActionOperation):
 
@@ -313,6 +339,16 @@ class PathContinousCp(PathActionOperation):
         return action_size
 
 
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        if self.power_range is None:
+            return True
+
+        return False
+
 class PathDiscreteCp(PathActionOperation):
 
     def __init__(self, name, replan_rate, controller, angle_adj_lst,  power_change_lst=None,num_control_point=4):
@@ -379,6 +415,16 @@ class PathDiscreteCp(PathActionOperation):
 
         return action_size
 
+
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        if self.power_change_lst is None:
+            return True
+
+        return False
 
 class PathDiscreteCanned(PathActionOperation):
 
@@ -449,3 +495,13 @@ class PathDiscreteCanned(PathActionOperation):
             action_size = (len(self.turn_amount_lst) + len(self.s_curve_lst))*len(self.power_change_lst)
 
         return action_size
+
+    def reset_to_max_power(self):
+        """
+        returns a boolean for if the simulation should reset the maximum power of the
+        :return: boolean for if the simulation should reset the power to max powr
+        """
+        if self.power_change_lst is None:
+            return True
+
+        return False

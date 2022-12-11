@@ -140,9 +140,9 @@ class ProcessedLidar(Sensor):
         gets the current measurements in their native units
         :return:
         """
-        raw = dict((k, self.measurement_dict[k]) for k in ('theta', 'dst') if k in self.measurement_dict)
+        raw = dict((k, self.measurement_dict[k]) for k in ('theta', 'dist') if k in self.measurement_dict)
         raw[self.name + '_theta'] = raw.pop('theta')
-        raw[self.name + '_dst'] = raw.pop('dst')
+        raw[self.name + '_dist'] = raw.pop('dist')
         return raw
 
     def get_norm_measurements(self):

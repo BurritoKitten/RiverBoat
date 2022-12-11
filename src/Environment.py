@@ -12,6 +12,7 @@ import os
 # 3rd party packages
 import numpy as np
 import pandas as pd
+import torch
 import yaml
 
 # own packages
@@ -19,6 +20,8 @@ import src.ActionOperation as ActionOperation
 import src.Controller as Controller
 import src.LearningAlgorithms as LearningAlgorithms
 import src.Movers as Movers
+import src.ReplayMemory as ReplayMemory
+import src.RewardFunctions as RewardFunctions
 import src.Sensors as Sensors
 
 
@@ -27,8 +30,12 @@ class Environment(ABC):
     def __init__(self, h_params):
         self.h_params = h_params
         self.mover_dict = OrderedDict()
-        self.agent = None # learning agent
-        self.ao = None # action operation. Used to convert raw outputs to inputs
+        self.agent = None  # learning agent
+        self.ao = None  # action operation. Used to convert raw outputs to inputs
+        self.reward_func = None  # reward function for the simulation
+        self.device = 'cuda' # TODO need to check this
+        self.header = ['time', 'reward', 'is_terminal', 'is_crashed', 'is_reached'] # history data frame header
+        self.history = None  # eventually a data frame to hold information about the simulation
 
     #@abstractmethod
     def initialize_environment(self):
@@ -54,10 +61,11 @@ class Environment(ABC):
             if 'river_boat' in name:
 
                 # whipe state to base configuration for the boat
-                #mover.initalize_in_state_dict()
+                mover.initalize_in_state_dict()
 
                 # reset the river boats data
                 dst_to_dest = 0.0
+
                 while dst_to_dest <= 10.0:
                     mover.state_dict['x_pos'] = np.random.random() * domain
                     mover.state_dict['y_pos'] = np.random.random() * domain
@@ -65,21 +73,24 @@ class Environment(ABC):
                                 mover.state_dict['y_pos'] - self.destination[1]) ** 2)
 
                 mover.state_dict['psi'] = np.random.random() * 2.0*np.pi
-                mover.state_dict['delta'] = (np.random.random()-0.5)*2.0*np.abs(mover.state_dict['delta_max'][0])
+                tmp_delta = (np.random.random()-0.5)*2.0*np.abs(mover.state_dict['delta_max'][0])
 
                 # reset the velocities of the boat
                 mover.state_dict['v_xp'] = np.random.random()
                 mover.state_dict['v_yp'] = np.random.random()-0.5
-                mover.state_dict['psi_dot'] = np.random.random()-0.5
+                mover.state_dict['psi_dot'] = 0.0 #(np.random.random()-0.5)/10.0
 
                 # power setting needs to be set from action designation.
                 if reset_to_max_power:
-                    mover.state_dict['power'] = mover.state_dict['power_max']
+                    tmp_power = mover.state_dict['power_max']
                 else:
-                    mover.state_dict['power'] = np.random.random()*mover.state_dict['power_max']
+                    tmp_power = np.random.random()*mover.state_dict['power_max']
+
+                mover.set_control(tmp_power, tmp_delta)
 
                 # reset the fuel on the boat
                 mover.state_dict['fuel'] = mover.state_dict['fuel_capacity']
+
 
             elif 'static_circle' in name:
                 # reset the static circle
@@ -106,6 +117,14 @@ class Environment(ABC):
             else:
                 raise ValueError('Mover not currently supported')
 
+        # updates sensors
+        for name, mover in self.mover_dict.items():
+            mover.update_sensors(self.mover_dict)
+            mover.derived_measurements(self.destination)
+
+        # reset reward function information
+        self.reward_func.reset(self.mover_dict)
+
     #@abstractmethod
     def reset_baseline_environment(self):
         pass
@@ -128,6 +147,7 @@ class Environment(ABC):
 
         :param is_baseline: a boolean for if the episode being run is a baseline episode or a training episode is being
             run
+        :param ep_num: the episode number in the training
         :return:
         """
 
@@ -137,36 +157,108 @@ class Environment(ABC):
         else:
             self.reset_environment(reset_to_max_power)
 
+        # reset the reward function
+        self.reward_func.reset(self.mover_dict)
+
         # reset the time stamps of the
         step_num = 0
-        t = 0
+        t = 0.0
         delta_t = self.h_params['scenario']['time_step']
-        max_t = self.h_params['scenario']['max_time']
+        max_t = float(self.h_params['scenario']['max_time'])
+        max_steps = int(np.ceil(max_t / delta_t))
 
         # reset history of the movers
         for name, mover in self.mover_dict.items():
-            mover.reset_history(int(np.ceil(max_t/delta_t)))
+            mover.reset_history(max_steps)
 
-        while t < max_t:
+        # reset own history
+        self.history = pd.DataFrame(data=np.zeros(((max_steps), len(self.header))),columns=self.header)
+
+        # holding the state prior to a step. Initialized as none so the loop knows to use the first state as its state
+        state = None
+        action = None
+        reward = 0.0
+        cumulative_reward = 0.0
+        # boolean for if the agent has reached a terminal state prior to the end of the episode
+        is_terminal = False
+        end_step = True  # if this is true the agent will know to make another prediction
+        while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            self.step(t)
+            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success = self.step(t, end_step)
 
-            # add data to memory
+            # if the state is empty update it to the interim state
+            if state is None:
+                state = interim_state
+                action = interim_action
+                reward = 0.0
+
+            if end_step or is_terminal:
+                # add data to memory because the agents step has completed.
+                next_state = interim_next_state
+
+                # convert the tuple to tensors
+                state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device,list(state.values()))
+                next_state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, list(next_state.values()))
+                action_tensor = torch.tensor(action)
+                reward_tensor = torch.tensor(reward)
+                is_terminal_tensor = torch.tensor(is_terminal)
+
+                # store the data
+                self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
+
+                # reset the state to None for the agents next step
+                state = None
+                action = None
+                reward = 0.0
+            else:
+                reward += interim_reward
 
             # add history of the movers the simulation
+            for name, mover in self.mover_dict.items():
+                mover.add_step_history(step_num)
 
-            # add simulation specific data from the learner
+            # add simulation specific history
+            action = interim_action
+            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success],[action]))
+            self.history.iloc[step_num] = telemetry
+
+            # add simulation specific data from the learner. destination distance
 
             t += delta_t
             step_num += 1
+            cumulative_reward += interim_reward
 
         # trim the history
         self.history.drop(range(step_num, len(self.history)), inplace=True)
         for name, mover in self.mover_dict.items():
             mover.trim_history(step_num)
 
-    def step(self,t):
+        # sort the stored data into buffers as needed
+        if not is_baseline:
+            self.replay_storage.sort_data_into_buffers()
+
+    def write_history(self, ep_num):
+        """
+        writes the histories of the movers and the simulation out for later analysis
+        :return:
+        """
+
+        total_history = self.history
+
+        for name, mover in self.mover_dict.items():
+
+            # get mover files
+            tmp_histroy = mover.history
+
+            # add history together
+            total_history = pd.concat([total_history, tmp_histroy], axis=1)
+
+        # write total history out to a file
+        file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
+        total_history.to_csv(file_name, index=False)
+
+    def step(self, t, end_step):
         """
         steps the simulation one time step. The agent is given a normalized state to make an action selection. Then
         the action is operated on the environment
@@ -209,7 +301,7 @@ class Environment(ABC):
                 raw_ouputs = self.agent.get_output(inp)
 
                 # convert the action to a command change
-                propeller_angle_change, power_change = self.ao.action_to_command(t,mover.state_dict, raw_ouputs)
+                propeller_angle_change, power_change, action, end_step = self.ao.action_to_command(t,mover.state_dict, raw_ouputs)
 
                 # apply the actuator changes to the mover
                 power = power_change + mover.state_dict['power']
@@ -218,11 +310,46 @@ class Environment(ABC):
 
             mover.step(time=t)
 
+        # save the original state before stepping
+        state = non_dimensional_values
+
         # normalize the state prime
+        for name, mover in self.mover_dict.items():
+            mover.update_sensors(self.mover_dict)
+            mover.derived_measurements(self.destination)
+
+        for name, mover in self.mover_dict.items():
+            if mover.can_learn:
+                # this mover is an agent and not a deterministic entity
+
+                # normalize the state
+                keys = mover.observation_df['name']
+                dimensional_values = OrderedDict()
+                non_dimensional_values = OrderedDict()
+                for key in keys:
+                    dimensional_values[key] = mover.state_dict.get(key)
+                    non_dimensional_values[key] = mover.state_dict.get(key)
+
+                norm_values = mover.observation_df['norm_value'].to_numpy()
+                norm_methods = mover.observation_df['norm_method'].to_numpy()
+                for i, norm_strat in enumerate(norm_values):
+                    # TODO norm by strategy. MOve this to its own method
+                    non_dimensional_values[keys[i]] = dimensional_values[keys[i]]/norm_values[i]
+
+                # add the normalized sensor measurements
+                for sensor in mover.sensors:
+                    norm_meas = sensor.get_norm_measurements()
+                    non_dimensional_values.update(norm_meas)
+
+        next_state = non_dimensional_values
 
         # get the reward
+        reward = self.reward_func.get_reward(t, self.mover_dict)
 
-        # set if the simulation has reach a termination condition
+        # get if the simulation has reach a termination condition
+        is_terminal = self.reward_func.get_terminal()
+
+        return state, action, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success
 
     def launch_training(self):
         """
@@ -269,8 +396,7 @@ class Environment(ABC):
         controller = self.get_controller()
 
         # get the action determination
-        action_size, ao, reset_to_max_power = self.get_action_size_and_operation(controller)
-        self.ao = ao
+        action_size, self.ao, reset_to_max_power = self.get_action_size_and_operation(controller)
 
         # get the state size
         state_size = self.get_state_size()
@@ -283,10 +409,18 @@ class Environment(ABC):
         la = self.get_learning_algorithm(action_size,state_size)
         self.agent = la
 
+        # get the reward function
+        self.reward_func = RewardFunctions.select_reward_function(self.h_params, self.ao)
+
+        # get the replay buffer
+        self.get_memory_mechanism()
+
         # loop over training
         elapsed_episodes = 0
         num_episodes = self.h_params['scenario']['num_episodes']
         while elapsed_episodes < num_episodes:
+
+            print("Episode Number {}".format(elapsed_episodes))
 
             # run baseline episodes if required
 
@@ -295,6 +429,7 @@ class Environment(ABC):
             self.run_simulation(is_baseline, reset_to_max_power)
 
             # write episode history out to a file
+            self.write_history(elapsed_episodes)
 
             # train the networks
 
@@ -388,6 +523,11 @@ class Environment(ABC):
                     if mover_name == tmp_sensor.mover_owner_name:
                         mover.add_sensor(tmp_sensor)
 
+                        # add the data from the sensor to the history for the mover
+                        tmp_state = tmp_sensor.get_raw_measurements()
+                        for ts in tmp_state:
+                            mover.history_header.append(mover.state_dict['name'] + '_' + ts)
+
             else:
                 raise ValueError('Sensor not currently supported')
 
@@ -398,11 +538,12 @@ class Environment(ABC):
         :return:
         """
         movers = self.h_params['movers']
+        delta_t = self.h_params['scenario']['time_step']
         for name, mover_details in movers.items():
 
             if 'river_boat' in name:
                 # create a river boat mover and add it to the mover dictionary
-                tmp_mover = Movers.RiverBoat.create_from_yaml(name,mover_details)
+                tmp_mover = Movers.RiverBoat.create_from_yaml(name,mover_details, delta_t)
             elif 'static_circle' in name:
                 # create a circle obstacle that does not move
                 tmp_mover = Movers.StaticCircleObstacle.create_from_yaml(name,mover_details)
@@ -486,7 +627,13 @@ class Environment(ABC):
 
         # get the size of the
         action_size = ao.get_action_size()
+        selection_size = ao.get_selection_size()
         reset_to_max_power = ao.reset_to_max_power()
+
+        # add columns to the history header for the simulation
+        for i in range(selection_size):
+            self.header.append('a'+str(i))
+
         return action_size, ao, reset_to_max_power
 
     def get_state_size(self):
@@ -543,6 +690,18 @@ class Environment(ABC):
             raise ValueError('Learning algorithm currently not supported')
 
         return la
+
+    def get_memory_mechanism(self):
+        """
+        parses the input file to create the replay buffer that is described in hte input file.
+        The replay buffer stores data for the learning agent to use to learn the solution.
+
+        :return:
+        """
+
+        memory_info = self.h_params['replay_data']
+
+        self.replay_storage = ReplayMemory.ReplayStorage(capacity=memory_info['capacity'], extra_fields=[], strategy=memory_info['replay_strategy'])
 
     def save_hparams(self):
         """

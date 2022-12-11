@@ -77,15 +77,6 @@ class Mover(ABC):
         for sensor in self.sensors:
             sensor.calc_measurements(mover_dict)
 
-
-    @abstractmethod
-    def get_history(self):
-        """
-
-        :return:
-        """
-        return self.history
-
     @abstractmethod
     def reset_history(self, num_steps):
         raise NotImplementedError('The mover '+self.name+' must implement the reset_history method')
@@ -93,10 +84,6 @@ class Mover(ABC):
     @abstractmethod
     def add_step_history(self, step_num):
         raise NotImplementedError('The mover '+self.name+' must implement the add_step_history method')
-
-    @abstractmethod
-    def normalize_state(self):
-        raise NotImplementedError('The mover '+self.name+' must implement the normalize_state method')
 
     @abstractmethod
     def derived_measurements(self, destination):
@@ -110,6 +97,15 @@ class Mover(ABC):
         :return:
         """
         raise NotImplementedError('The mover must implement the create_from_yaml method')
+
+    def trim_history(self, step_num):
+        """
+        there may be extra data entries in the history table if the simulation was terminated before it ran out of time.
+        Those extra empty data peices are remover
+        :param step_num:
+        :return:
+        """
+        self.history.drop(range(step_num, len(self.history)), inplace=True)
 
 
 class StaticCircleObstacle(Mover,ABC):
@@ -134,14 +130,6 @@ class StaticCircleObstacle(Mover,ABC):
     def step(self, time):
         # no changes are made as this is a static circle
         pass
-
-    def normalize_state(self):
-        """
-        normalizes the postion and radius of the mover to be between 0 and 1
-        :return:
-        """
-        self.norm_pos[0] = (self.pos[0]-self.domain[0,0])/(self.domain[0,1]-self.domain[0,0])
-        self.norm_pos[1] = (self.pos[1] - self.domain[1, 0]) / (self.domain[1, 1] - self.domain[1, 0])
 
     def action_to_command(self):
         # there are no actions for the static circle as it does not make any decisions
@@ -197,58 +185,89 @@ class RiverBoat(Mover,ABC):
                  fuel, fuel_capacity, hull_len, hull_width, mass, moi, power, power_max, psi, prop_diam):
         # instantiate mover
         super().__init__(name)
-        self.initalize_in_state_dict()
 
-        # --------------------------------------------------------------------------------------------------------------
-        # set the values of the boat
-        # time of the simulation
-        self.state_dict['time'] = 0.0
-        # name of the boat
-        self.state_dict['name'] = name
-        # cross sectional area of the part of the boat in the air [m^2]
-        self.state_dict['area_air'] = area_air
-        # cross sectional area of the part of the boat in the water [m^2]
-        self.state_dict['area_water'] = area_water
-        # sets the brake specific fuel consumption [kg/w-s]
-        self.state_dict['bsfc'] = bsfc
-        # propeller angle [rad]
-        self.state_dict['delta'] = delta
-        # set bounds for the propeller angle
-        self.state_dict['delta_max'] = delta_max
-        # time step of the simulation
-        self.state_dict['delta_t'] = delta_t
-        # air density [kg/m^3]
-        self.state_dict['density_air'] = density_air
-        # water density [kg/m^3]
-        self.state_dict['density_water'] = density_water
-        # figure of merit of the propeller
-        self.state_dict['fom'] = fom
-        # sets the current level of fuel on the boat [kg]
-        self.state_dict['fuel'] = fuel
-        # sets the maximum amount of fuel the boat can have [kg]
-        self.state_dict['fuel_capacity'] = fuel_capacity
-        # the length of the hull [m]
-        self.state_dict['hull_length'] = hull_len
-        # the length of the hull [m]
-        self.state_dict['hull_width'] = hull_width
-        # the total mass of the boat
-        self.state_dict['mass'] = mass
-        # set the moment of inertia of the boat [kg m^2]
-        self.state_dict['moi'] = moi
-        # current power level of the propeller [watt]
-        self.state_dict['power'] = power
-        # maximum power level of the propeller [watt]
-        self.state_dict['power_max'] = power_max
-        # angle of the hull to the positive x axis in the global frame [rad]
-        self.state_dict['psi'] = psi
-        # sets the disk area of the propeller counting the area of the spinner in the disk area [m]
-        self.state_dict['prop_area'] = np.pi * prop_diam * prop_diam
+        # save the passed in parameters that are wiped in initialize in state dict method. This allows the boat to be
+        # easily reset for each simulation
+        self.init_state_dict = OrderedDict()
+        self.init_state_dict['time'] = 0.0
+        self.init_state_dict['name'] = name
+        self.init_state_dict['alpha'] = 0.0
+        self.init_state_dict['area_air'] = area_air
+        self.init_state_dict['area_water'] = area_water
+        self.init_state_dict['bsfc'] = bsfc
+        self.init_state_dict['delta'] = delta
+        self.init_state_dict['delta_max'] = delta_max
+        self.init_state_dict['delta_t'] = delta_t
+        self.init_state_dict['density_air'] = density_air
+        self.init_state_dict['density_water'] = density_water
+        self.init_state_dict['fom'] = fom
+        self.init_state_dict['fuel'] = fuel
+        self.init_state_dict['fuel_capacity'] = fuel_capacity
+        self.init_state_dict['hull_length'] = hull_len
+        self.init_state_dict['hull_width'] = hull_width
+        self.init_state_dict['mass'] = mass
+        self.init_state_dict['moi'] = moi
+        self.init_state_dict['power'] = power
+        self.init_state_dict['power_max'] = power_max
+        self.init_state_dict['psi'] = psi
+        self.init_state_dict['prop_area'] = np.pi * prop_diam * prop_diam
+
+        # initialize the boat
+        self.initalize_in_state_dict()
 
         # telemetry
         # self.telemetry = pd.DataFrame(self.state_dict.values(),columns=self.state_dict.keys())
         self.telemetry = pd.DataFrame([self.state_dict])
+        # get the history header
+        self.history_header = list(self.get_telemetry().keys())
+
+    def get_telemetry(self):
+        """
+        gets the selected state variables for logging
+        :return:
+        """
+        return {'name': 'river_boat_0', 'x_pos': self.state_dict['x_pos'],
+                               'y_pos': self.state_dict['y_pos'], 'alpha': self.state_dict['alpha'],
+                               'delta': self.state_dict['delta'], 'psi': self.state_dict['psi'],
+                               'mass': self.state_dict['mass'], 'area_air': self.state_dict['area_air'],
+                               'area_water': self.state_dict['area_water'], 'dest_dist': self.state_dict['dest_dist'],
+                               'moi': self.state_dict['moi'], 'mu': self.state_dict['mu'],
+                               'hull_length': self.state_dict['hull_length'],
+                               'hull_width': self.state_dict['hull_width'], 'prop_area': self.state_dict['prop_area'],
+                               'psi_eff_air': self.state_dict['psi_eff_air'],
+                               'psi_eff_water': self.state_dict['psi_eff_water'], 'theta': self.state_dict['theta'],
+                               'v_xp': self.state_dict['v_xp'], 'v_yp': self.state_dict['v_yp'],
+                               'v_x': self.state_dict['v_x'], 'v_y': self.state_dict['v_y'],
+                               'psi_dot': self.state_dict['psi_dot'], 'v_x_eff_air': self.state_dict['v_x_eff_air'],
+                               'v_y_eff_air': self.state_dict['v_y_eff_air'],
+                               'v_x_eff_water': self.state_dict['v_x_eff_water'],
+                               'v_y_eff_water': self.state_dict['v_y_eff_water'],
+                               'acc_xp': self.state_dict['acc_xp'], 'acc_yp': self.state_dict['acc_yp'],
+                               'acc_x': self.state_dict['acc_x'], 'acc_y': self.state_dict['acc_y'],
+                               'psi_double_dot': self.state_dict['psi_double_dot'], 'power': self.state_dict['power'],
+                               'thrust': self.state_dict['thrust'], 'fom': self.state_dict['fom'],
+                               'delta_t': self.state_dict['delta_t'],
+                               'v_wind_x': self.state_dict['v_wind'][0], 'v_wind_y': self.state_dict['v_wind'][1],
+                               'v_current_x': self.state_dict['v_current'][0],
+                               'v_current_y': self.state_dict['v_current'][1],
+                               'f_d_air': self.state_dict['f_d_air'], 'f_s_air': self.state_dict['f_s_air'],
+                               'f_s_water': self.state_dict['f_s_water'], 'f_d_water': self.state_dict['f_d_water'],
+                               'fx_p': self.state_dict['fx_p'], 'fy_p': self.state_dict['fy_p'],
+                               'm_air': self.state_dict['m_air'], 'm_water': self.state_dict['m_water'],
+                               'mr': self.state_dict['mr'], 'my_p': self.state_dict['my_p'],
+                               'time': self.state_dict['time'], 'bsfc': self.state_dict['bsfc'],
+                               'delta_max_min':self.state_dict['delta_max'][0],
+                               'delta_max_max':self.state_dict['delta_max'][1],
+                               'density_air': self.state_dict['density_air'],
+                               'density_water': self.state_dict['density_water'], 'fuel':self.state_dict['fuel'],
+                               'fuel_capacity': self.state_dict['fuel_capacity'],
+                               'power_max': self.state_dict['power_max']}
 
     def initalize_in_state_dict(self):
+        """
+        Initialize the state of the boat to a default state
+        :return:
+        """
         # --------------------------------------------------------------------------------------------------------------
         # position data
         # --------------------------------------------------------------------------------------------------------------
@@ -372,6 +391,53 @@ class RiverBoat(Mover,ABC):
         self.state_dict['mr'] = 0.0
         # moment induce by the propeller
         self.state_dict['my_p'] = 0.0
+
+        # --------------------------------------------------------------------------------------------------------------
+        # set the values of the boat
+        # time of the simulation
+        self.state_dict['time'] = self.init_state_dict['time']
+        # name of the boat
+        self.state_dict['name'] = self.init_state_dict['name']
+        # angle of attack of the propeller disk [rad]
+        self.state_dict['alpha'] = self.init_state_dict['alpha']
+        # cross sectional area of the part of the boat in the air [m^2]
+        self.state_dict['area_air'] = self.init_state_dict['area_air']
+        # cross sectional area of the part of the boat in the water [m^2]
+        self.state_dict['area_water'] = self.init_state_dict['area_water']
+        # sets the brake specific fuel consumption [kg/w-s]
+        self.state_dict['bsfc'] = self.init_state_dict['bsfc']
+        # propeller angle [rad]
+        self.state_dict['delta'] = self.init_state_dict['delta']
+        # set bounds for the propeller angle
+        self.state_dict['delta_max'] = self.init_state_dict['delta_max']
+        # time step of the simulation
+        self.state_dict['delta_t'] = self.init_state_dict['delta_t']
+        # air density [kg/m^3]
+        self.state_dict['density_air'] = self.init_state_dict['density_air']
+        # water density [kg/m^3]
+        self.state_dict['density_water'] = self.init_state_dict['density_water']
+        # figure of merit of the propeller
+        self.state_dict['fom'] = self.init_state_dict['fom']
+        # sets the current level of fuel on the boat [kg]
+        self.state_dict['fuel'] = self.init_state_dict['fuel']
+        # sets the maximum amount of fuel the boat can have [kg]
+        self.state_dict['fuel_capacity'] = self.init_state_dict['fuel_capacity']
+        # the length of the hull [m]
+        self.state_dict['hull_length'] = self.init_state_dict['hull_length']
+        # the length of the hull [m]
+        self.state_dict['hull_width'] = self.init_state_dict['hull_width']
+        # the total mass of the boat
+        self.state_dict['mass'] = self.init_state_dict['mass']
+        # set the moment of inertia of the boat [kg m^2]
+        self.state_dict['moi'] = self.init_state_dict['moi']
+        # current power level of the propeller [watt]
+        self.state_dict['power'] = self.init_state_dict['power']
+        # maximum power level of the propeller [watt]
+        self.state_dict['power_max'] = self.init_state_dict['power_max']
+        # angle of the hull to the positive x axis in the global frame [rad]
+        self.state_dict['psi'] = self.init_state_dict['psi']
+        # sets the disk area of the propeller counting the area of the spinner in the disk area [m]
+        self.state_dict['prop_area'] = self.init_state_dict['prop_area']
 
     def set_control(self, power, propeller_angle):
         """
@@ -499,6 +565,7 @@ class RiverBoat(Mover,ABC):
         :return:
         """
         # correct power if there is no fuel
+        # correct power if there is no fuel
         if self.state_dict['fuel'] <= 0.0:
             self.state_dict['power'] = 0.0
             self.state_dict['thrust'] = 0.0
@@ -506,6 +573,11 @@ class RiverBoat(Mover,ABC):
             # get the thrust the propeller is currently outputing
             self.state_dict['thrust'] = self.calc_thrust([self.state_dict['v_xp'], self.state_dict['v_yp']],
                                                          self.state_dict['psi_dot'])
+        # update v_x and v_y. Needed for first step. Look to place this somewhere else
+        self.state_dict['v_x'] = self.state_dict['v_xp'] * np.cos(-self.state_dict['psi']) + self.state_dict[
+            'v_yp'] * np.sin(-self.state_dict['psi'])
+        self.state_dict['v_y'] = -self.state_dict['v_xp'] * np.sin(-self.state_dict['psi']) + self.state_dict[
+            'v_yp'] * np.cos(-self.state_dict['psi'])
 
         # get the forces and moments of the boat. save them for telemetry later
         self.calc_forces_and_moments(self.state_dict['thrust'])
@@ -566,8 +638,8 @@ class RiverBoat(Mover,ABC):
         self.state_dict['time'] = time
 
         # log telemetry
-        tmp_df = pd.DataFrame([self.state_dict])
-        self.telemetry = pd.concat([self.telemetry, tmp_df], ignore_index=True)
+        #tmp_df = pd.DataFrame([self.state_dict])
+        #self.telemetry = pd.concat([self.telemetry, tmp_df], ignore_index=True)
 
     def calc_forces_and_moments(self, thrust):
         """
@@ -855,7 +927,7 @@ class RiverBoat(Mover,ABC):
         return np.power(power / (2.0 * rho * area), 1.0 / 3.0)
 
     @staticmethod
-    def create_from_yaml(name,input_dict):
+    def create_from_yaml(name,input_dict, delta_t):
         """
         give a subset of the hyper-parameter input set, create a river boat. The default boat can be used, and
         modifications to that boat can be applied to the boat's model parameters. If a full custom boat is required,
@@ -882,7 +954,7 @@ class RiverBoat(Mover,ABC):
 
             elif key == 'use_default':
                 # use the default riverboat.
-                rb = RiverBoat.get_default(delta_t=1.0) # default time step to be overwritten by the caller
+                rb = RiverBoat.get_default(delta_t) # default time step to be overwritten by the caller
                 rb.state_dict['name'] = name
             elif key == 'state':
                 # state not processed here
@@ -914,16 +986,28 @@ class RiverBoat(Mover,ABC):
     #    pass
 
     def add_step_history(self, step_num):
-        pass
+        """
+        Adds the current state of the mover to its own history
 
-    def get_history(self):
-        pass
-
-    def normalize_state(self):
-        pass
+        :param step_num: The step number in the simulation
+        :return:
+        """
+        telemetry = self.get_telemetry()
+        # get the sensors information and add it to the state
+        for sensor in self.sensors:
+            tmp_state = sensor.get_raw_measurements()
+            telemetry = {**telemetry, **tmp_state}
+        self.history.iloc[step_num] = list(telemetry.values())
 
     def reset_history(self, num_steps):
-        pass
+        """
+
+        :param num_steps:
+        :return:
+        """
+        empty_data = np.zeros((num_steps, len(self.history_header)))
+        self.history = pd.DataFrame(data=empty_data,
+                                    columns=self.history_header)
 
     def derived_measurements(self, destination):
         """
@@ -961,7 +1045,7 @@ class RiverBoat(Mover,ABC):
         area_air = 15  # [m^2]
         area_water = 2.5  # [m^2]
         delta = 0
-        delta_max = [-np.pi / 2.0, np.pi / 2.0]
+        delta_max = [-np.pi / 4.0, np.pi / 4.0]
         density_air = 1.225
         density_water = 998
         fom = 0.75  # figure of merit

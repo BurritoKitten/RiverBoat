@@ -84,6 +84,14 @@ class ActionOperation(ABC):
         pass
 
     @abstractmethod
+    def get_selection_size(self):
+        """
+        some action methods down select the number of actions. Example, DQN may have 5 choices but only 1 may be
+        selected. The selection size is used for logging the selected actions.
+        :return:
+        """
+
+    @abstractmethod
     def reset_to_max_power(self):
         """
         returns a boolean for if the simulation should reset the maximum power of the
@@ -145,7 +153,7 @@ class DirectControlActionDiscrete(ActionOperation):
             propeller_change = self.prop_change_angle_lst[prop_idx]
             power_change = self.power_change_lst[power_idx]
 
-        return propeller_change, power_change
+        return propeller_change, power_change, action_code, True
 
     def get_action_size(self):
         """
@@ -162,6 +170,20 @@ class DirectControlActionDiscrete(ActionOperation):
 
         return action_size
 
+    def get_selection_size(self):
+        """
+        get the number of selected actions the action operation produces after being used.
+
+        :return: an integer for the number of selected actions
+        """
+        if self.power_change_lst is None:
+            # agent is only controlling the propeller angle, and not the power amount
+            selection_size = 1
+        else:
+            # the agent is controlling both the propeller angle and the power delivered to the propeller
+            selection_size = 2
+        return selection_size
+
     def reset_to_max_power(self):
         """
         returns a boolean for if the simulation should reset the maximum power of the
@@ -171,6 +193,7 @@ class DirectControlActionDiscrete(ActionOperation):
             return True
 
         return False
+
 
 class DirectControlActionContinous(ActionOperation):
 
@@ -212,7 +235,7 @@ class DirectControlActionContinous(ActionOperation):
             power = input[1]
             power_change = power * self.max_power
 
-        return propeller_change, power_change
+        return propeller_change, power_change, propeller, True
 
     def get_action_size(self):
         """
@@ -220,7 +243,7 @@ class DirectControlActionContinous(ActionOperation):
 
         :return: integer of the action size
         """
-        if self.max_power == None:
+        if self.max_power is None:
             # only controlling the propeller angle
             action_size = 1
         else:
@@ -228,6 +251,22 @@ class DirectControlActionContinous(ActionOperation):
             action_size = 2
 
         return action_size
+
+    def get_selection_size(self):
+        """
+        gets the number of selected actions this action operation produces.
+
+        :return: an integer with the number of selected actions
+        """
+
+        if self.max_power is None:
+            # only controlling the propeller angle
+            selection_size = 1
+        else:
+            # controlling both the propeller and power
+            selection_size = 2
+
+        return selection_size
 
     def reset_to_max_power(self):
         """
@@ -238,6 +277,7 @@ class DirectControlActionContinous(ActionOperation):
             return True
 
         return False
+
 
 class PathActionOperation(ActionOperation):
 
@@ -338,6 +378,13 @@ class PathContinousCp(PathActionOperation):
 
         return action_size
 
+    def get_selection_size(self):
+        """
+        gets the number of selected actions for the action operation. Happens to be the same as the action size.
+
+        :return: integer for the number of selected actions
+        """
+        return self.get_action_size()
 
     def reset_to_max_power(self):
         """
@@ -348,6 +395,7 @@ class PathContinousCp(PathActionOperation):
             return True
 
         return False
+
 
 class PathDiscreteCp(PathActionOperation):
 
@@ -415,6 +463,20 @@ class PathDiscreteCp(PathActionOperation):
 
         return action_size
 
+    def get_selection_size(self):
+        """
+        gets the number of selected actions
+
+        :return: an integer for the number of selected actions
+        """
+        if self.power_change_lst is None:
+            # only changing the path not the power setting along the path
+            selection_size = self.num_control_point
+        else:
+            # change the power and the path
+            selection_size = 2*self.num_control_point
+
+        return selection_size
 
     def reset_to_max_power(self):
         """
@@ -425,6 +487,7 @@ class PathDiscreteCp(PathActionOperation):
             return True
 
         return False
+
 
 class PathDiscreteCanned(PathActionOperation):
 
@@ -495,6 +558,21 @@ class PathDiscreteCanned(PathActionOperation):
             action_size = (len(self.turn_amount_lst) + len(self.s_curve_lst))*len(self.power_change_lst)
 
         return action_size
+
+    def get_selection_size(self):
+        """
+        gets the number of selected actions
+
+        :return: an integer for the number of selected actions
+        """
+        if self.power_change_lst is None:
+            # only changing the path not the power setting along the path
+            selection_size = 1
+        else:
+            # change the power and the path
+            selection_size = 1
+
+        return selection_size
 
     def reset_to_max_power(self):
         """

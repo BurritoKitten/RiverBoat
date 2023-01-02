@@ -179,13 +179,18 @@ class Environment(ABC):
         action = None
         reward = 0.0
         cumulative_reward = 0.0
+        min_dst = np.infty  # the minimum distance of the boat to the goal
         # boolean for if the agent has reached a terminal state prior to the end of the episode
         is_terminal = False
         end_step = True  # if this is true the agent will know to make another prediction
         while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success = self.step(ep_num, t, end_step)
+            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
+
+            # check if the distance is closer than any previous distances. If so save the distance
+            if curr_dist < min_dst:
+                min_dst = curr_dist
 
             # if the state is empty update it to the interim state
             if state is None:
@@ -240,6 +245,8 @@ class Environment(ABC):
         # sort the stored data into buffers as needed
         if not is_baseline:
             self.replay_storage.sort_data_into_buffers()
+
+        return cumulative_reward, is_crashed, is_success, min_dst
 
     def write_history(self, ep_num):
         """
@@ -352,7 +359,13 @@ class Environment(ABC):
         # get if the simulation has reach a termination condition
         is_terminal = self.reward_func.get_terminal()
 
-        return state, action, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success
+        # get the distance to the destination
+        for name, mover in self.mover_dict.items():
+            if mover.can_learn:
+                # updates sensors
+                dest_dst = mover.state_dict['dest_dist']
+
+        return state, action, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
 
     def launch_training(self):
         """
@@ -421,6 +434,14 @@ class Environment(ABC):
         # loop over training
         elapsed_episodes = 0
         num_episodes = self.h_params['scenario']['num_episodes']
+
+        # write the header for overall training progress
+        progress_file_name = "Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
+                               self.h_params['scenario']['trial_num'])+"/Progress/training_progress.csv"
+        with open(progress_file_name, 'w') as f:
+            f.write('ep_num,cumulative_reward,is_crashed,is_success,min_dst\n')
+            f.flush()
+
         while elapsed_episodes < num_episodes:
 
             print("Episode Number {}".format(elapsed_episodes))
@@ -429,17 +450,29 @@ class Environment(ABC):
 
             # run the episode where training data is accumulated
             is_baseline = False
-            self.run_simulation(elapsed_episodes,is_baseline, reset_to_max_power)
+            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(elapsed_episodes,is_baseline, reset_to_max_power)
 
             # write episode history out to a file
             self.write_history(elapsed_episodes)
+
+            # save macro simulation information
+            with open(progress_file_name, 'a') as f:
+                f.write(str(elapsed_episodes)+','+str(cumulative_reward)+','+str(is_crashed)+','+str(is_success)+','+str(min_dst)+'\n')
+                f.flush()
 
             # train the networks
             self.agent.train_agent(self.replay_storage)
 
             # update target networks if applicable
-            if elapsed_episodes > 0 and elapsed_episodes % self.h_params['learning_algorithm']['target_frequency']:
-                pass
+            if elapsed_episodes > 0 and elapsed_episodes % self.h_params['learning_algorithm']['target_frequency'] == 0:
+
+                # update the target networks parameters
+                self.agent.target_network.load_state_dict(self.agent.network.state_dict())
+
+                # save the networks
+                torch.save(self.agent.network.state_dict(),
+                           "Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
+                               self.h_params['scenario']['trial_num'])+"/Models/"+str(elapsed_episodes)+'.pymdl')
 
             elapsed_episodes += 1
 

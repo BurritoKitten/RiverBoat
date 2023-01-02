@@ -142,7 +142,7 @@ class Environment(ABC):
         else:
             raise ValueError('Added mover must be of type mover')
 
-    def run_simulation(self, is_baseline, reset_to_max_power):
+    def run_simulation(self, ep_num, is_baseline, reset_to_max_power):
         """
 
         :param is_baseline: a boolean for if the episode being run is a baseline episode or a training episode is being
@@ -185,7 +185,7 @@ class Environment(ABC):
         while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success = self.step(t, end_step)
+            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success = self.step(ep_num, t, end_step)
 
             # if the state is empty update it to the interim state
             if state is None:
@@ -200,9 +200,12 @@ class Environment(ABC):
                 # convert the tuple to tensors
                 state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device,list(state.values()))
                 next_state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, list(next_state.values()))
-                action_tensor = torch.tensor(action)
-                reward_tensor = torch.tensor(reward)
-                is_terminal_tensor = torch.tensor(is_terminal)
+                #action_tensor = torch.tensor([action]).to(self.device)
+                action_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [action])
+                #reward_tensor = torch.tensor([reward]).to(self.device)
+                reward_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [reward])
+                #is_terminal_tensor = torch.tensor([is_terminal]).to(self.device)
+                is_terminal_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [is_terminal])
 
                 # store the data
                 self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
@@ -258,7 +261,7 @@ class Environment(ABC):
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
         total_history.to_csv(file_name, index=False)
 
-    def step(self, t, end_step):
+    def step(self, ep_num, t, end_step):
         """
         steps the simulation one time step. The agent is given a normalized state to make an action selection. Then
         the action is operated on the environment
@@ -301,7 +304,7 @@ class Environment(ABC):
                 raw_ouputs = self.agent.get_output(inp)
 
                 # convert the action to a command change
-                propeller_angle_change, power_change, action, end_step = self.ao.action_to_command(t,mover.state_dict, raw_ouputs)
+                propeller_angle_change, power_change, action, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
 
                 # apply the actuator changes to the mover
                 power = power_change + mover.state_dict['power']
@@ -406,7 +409,7 @@ class Environment(ABC):
         #    raise ValueError('Only single agent learning currently supported')
 
         # get the learning algorithm
-        la = self.get_learning_algorithm(action_size,state_size)
+        la = self.get_learning_algorithm(action_size,state_size, self.h_params['optimizer'])
         self.agent = la
 
         # get the reward function
@@ -426,14 +429,17 @@ class Environment(ABC):
 
             # run the episode where training data is accumulated
             is_baseline = False
-            self.run_simulation(is_baseline, reset_to_max_power)
+            self.run_simulation(elapsed_episodes,is_baseline, reset_to_max_power)
 
             # write episode history out to a file
             self.write_history(elapsed_episodes)
 
             # train the networks
+            self.agent.train_agent(self.replay_storage)
 
             # update target networks if applicable
+            if elapsed_episodes > 0 and elapsed_episodes % self.h_params['learning_algorithm']['target_frequency']:
+                pass
 
             elapsed_episodes += 1
 
@@ -620,7 +626,8 @@ class Environment(ABC):
             # agent is directly controlling the actuators with discrete choices
             ao = ActionOperation.DirectControlActionDiscrete(name='discrete_direct',
                                                 prop_change_angle_lst = self.h_params['action_description']['propeller_values'],
-                                                power_change_lst = self.h_params['action_description']['power_values'])
+                                                power_change_lst = self.h_params['action_description']['power_values'],
+                                                epsilon_schedule = self.h_params['action_description']['eps_schedule'])
 
         else:
             raise ValueError('Action type and designation combo not supported')
@@ -664,12 +671,13 @@ class Environment(ABC):
 
         return n_obs
 
-    def get_learning_algorithm(self, action_size, state_size):
+    def get_learning_algorithm(self, action_size, state_size, optimizer_settings):
         """
         Gets the learning algorithm that will drive how the agent is trained. Example: DQN, DDPG, etc.
 
         :param action_size: integer for the number of actions the agent will have to output from its neural network
         :param state_size: interger for the observation space that the agent will accept into its neural network
+        :param optimizer_settings: the data from the input file that outlines how to build the optimizer
         :return: the built learning algorithm object. Serves as the agent as well.
         """
 
@@ -681,9 +689,12 @@ class Environment(ABC):
         layer_numbers = layer_numbers.split(',')
         layer_numbers = [float(i) for i in layer_numbers]
         loss = settings['loss']
+        n_batches = settings['n_batches']
+        batch_size = settings['batch_size']
+        device = 'cuda'
 
         if settings['name'] == 'DQN':
-            la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size)
+            la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size,n_batches, batch_size, device, optimizer_settings)
         elif settings['name'] == 'DDPG':
             la = None
         else:

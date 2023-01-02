@@ -217,15 +217,15 @@ class ReplayStorage:
         :param batch_size: the number of data tuples tp sample from the replay buffers to train over
         :return:
         """
-        strategy = self.h_params['replay_data']['replay_strategy']
-        if strategy == 'all_in_one':
+        #strategy = self.h_params['replay_data']['replay_strategy']
+        if self.strategy == 'all_in_one':
 
             if len(self.buffers['only'].memory) < batch_size:
                 # not enough data to fill up one batch
                 return None
 
             return random.sample(self.buffers['only'].memory, batch_size)
-        elif strategy == 'proximity':
+        elif self.strategy == 'proximity':
 
             if len(self.buffers['close'].memory) + len(self.buffers['far'].memory) < batch_size:
                 # there is not enough data in both buffers to complete one batch
@@ -297,7 +297,7 @@ class ReplayStorage:
             batch = close + far
             return batch
 
-        elif strategy == 'outcome':
+        elif self.strategy == 'outcome':
 
             if len(self.buffers['success'].memory)+len(self.buffers['crash'].memory)+len(self.buffers['other'].memory) < batch_size:
                 # there is not enough data in all of the buffers to complete one batch

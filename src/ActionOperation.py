@@ -66,7 +66,7 @@ class ActionOperation(ABC):
         self.name = name
 
     @abstractmethod
-    def action_to_command(self, time, state, input):
+    def action_to_command(self, ep_num, time, state, input):
         """
         the child class needs to implement a function that takes in a state, and produces a command to for the aircraft.
         The command can also use internal data/items to generate the command with the state.
@@ -101,7 +101,7 @@ class ActionOperation(ABC):
 
 class DirectControlActionDiscrete(ActionOperation):
 
-    def __init__(self, name, prop_change_angle_lst, power_change_lst=None):
+    def __init__(self, name, prop_change_angle_lst, power_change_lst=None, epsilon_schedule=None):
         """
         a class that converts an integer class output from a neural network to a mapped propeller change
         and a powr change. The power does not need to change
@@ -114,15 +114,23 @@ class DirectControlActionDiscrete(ActionOperation):
         if prop_change_angle_lst is None or len(prop_change_angle_lst) == 0:
             raise ValueError("The propeller change angle list cannot be none and must be have at least one element")
         prop_change_angle_lst = prop_change_angle_lst.split(',')
-        self.prop_change_angle_lst = [float(i) for i in prop_change_angle_lst]
+        self.prop_change_angle_lst = [np.deg2rad(float(i)) for i in prop_change_angle_lst]
         if power_change_lst == 'None':
             self.power_change_lst = None
         else:
             power_change_lst = power_change_lst.split(',')
             self.power_change_lst = [float(i) for i in power_change_lst]
 
+        # parse the epsilon greedy schedule
+        self.epsilon_schedule = []
+        tuples = epsilon_schedule.split(';')
+        for tup in tuples:
+            tmp_tup = tup.split(",")
+            tmp_tup[0] = int(tmp_tup[0])
+            tmp_tup[1] = float(tmp_tup[1])
+            self.epsilon_schedule.append(tmp_tup)
 
-    def action_to_command(self, time, state, raw_actions):
+    def action_to_command(self, ep_num, time, state, raw_actions):
         """
         given the index outputted by a neural network, the propeller change and power change is encoded from that.
         Those changes are returned so the caller can convert the agents network raw outputs into a change in
@@ -134,8 +142,30 @@ class DirectControlActionDiscrete(ActionOperation):
         :return: propeller angle change [rad], and power change [watt]
         """
 
-        # convert the code to a propeller change and a power change
-        action_code = raw_actions.numpy().argmax()
+        # convert raw action from gpu to cpu
+        raw_actions = raw_actions.to('cpu')
+
+        # convert the code to a propeller change and a power change. Apply a random choice with epsilon greedy strategy
+        eps_threshold = 0.0
+        for i, esp in enumerate(self.epsilon_schedule):
+            if ep_num >= esp[0]:
+                # the ith and ith+1 entries define the linear segment of the epsilon cooling schedule
+                x1 = esp[0]
+                y1 = esp[1]
+                x2 = self.epsilon_schedule[i+1][0]
+                y2 = self.epsilon_schedule[i + 1][1]
+
+                slope = (y2-y1)/(x2-x1)
+                intercept = y1-x1*slope
+
+                eps_threshold = float(ep_num)*slope + intercept
+                break
+        if np.random.random() <= eps_threshold:
+            # choose random action
+            action_code = np.random.randint(0,len(raw_actions))
+        else:
+            # choose value with maximal q value
+            action_code = raw_actions.numpy().argmax()
 
         if self.power_change_lst is None:
             # no power change, only the propeller is changeing
@@ -213,7 +243,7 @@ class DirectControlActionContinous(ActionOperation):
         else:
             self.max_power = max_power
 
-    def action_to_command(self, time, state, input):
+    def action_to_command(self, ep_num, time, state, input):
         """
         converts the outputs of a neural network to a propeller and power change amount. This is assumed a continues
         value. The input should be bounded from -1 to 1. The conversion does not have to be linear but currently
@@ -348,7 +378,7 @@ class PathContinousCp(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, time, state, input):
+    def action_to_command(self, ep_num, time, state, input):
         """
         converts the raw output of the agent (neural network) and using the path to get the propeller angle and power
         change
@@ -433,7 +463,7 @@ class PathDiscreteCp(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, time, state, input):
+    def action_to_command(self, ep_num, time, state, input):
         """
         takes the raw ouput of the agent (neural network) and converts it to propeller angle change and power change
         values
@@ -528,7 +558,7 @@ class PathDiscreteCanned(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, time, state, input):
+    def action_to_command(self, ep_num, time, state, input):
         """
         given the raw output of the agent (neural network) a path is generated if enough time has elapsed since the last
         time a path has been generated. Internally, a controller uses the path to generate propeller angle and power

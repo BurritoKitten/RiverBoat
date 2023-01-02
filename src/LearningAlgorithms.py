@@ -8,10 +8,13 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 # own packages
+import src.Optimizer as Optimizer
+import src.ReplayMemory as ReplayMemory
+
 
 class Network(nn.Module):
 
-    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, device):
         """
         builds and creates a neural network for the learning agents to learn
 
@@ -31,23 +34,23 @@ class Network(nn.Module):
         for i, layer in enumerate(layer_numbers):
 
             if i == 0:
-                tmp_layer = nn.Linear(state_size, int(layer))
+                tmp_layer = nn.Linear(state_size, int(layer), device=device)
             else:
-                tmp_layer = nn.Linear(int(layer_numbers[i-1]), int(layer))
+                tmp_layer = nn.Linear(int(layer_numbers[i-1]), int(layer), device=device)
 
             self.layers.append(tmp_layer)
 
         # get the output layer
-        self.out = nn.Linear(int(layer_numbers[-1]),action_size)
+        self.out = nn.Linear(int(layer_numbers[-1]),action_size, device=device)
 
         # interim activation
         hidden_active = h_params['learning_algorithm']['activation']
         if hidden_active == 'leaky_relu':
             self.active = torch.nn.LeakyReLU()
         elif hidden_active == 'linear':
-            self.active = torch.nn.Linear()
+            self.active = torch.nn.Linear(device=device)
         elif hidden_active == 'relu':
-            self.active = torch.nn.ReLU()
+            self.active = torch.nn.ReLU( )
         elif hidden_active == 'tan_h':
             self.active == torch.nn.Tanh()
         else:
@@ -91,7 +94,7 @@ class Network(nn.Module):
 
 class LearningAlgorithms:
 
-    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, n_batches, batch_size, device):
         """
         A super class for learning algorithms. learning algorithms are the core of the agent's policy. Neural networks
         are used as the function approximators
@@ -103,6 +106,9 @@ class LearningAlgorithms:
         :param layer_numbers: The number of internal layers of the neural network
         :param loss: a string designating the loss function
         :param state_size: the number of inputs for the neural network
+        :param n_batches: the number of batches to train the neural networks
+        :param batch_size: the amount of data in a batch
+        :param device: either the cpu or cuda for the gpu
         :return:
         """
 
@@ -113,11 +119,16 @@ class LearningAlgorithms:
         self.layer_numbers = layer_numbers
         self.loss = loss
         self.state_size = state_size
+        self.n_batches = n_batches
+        self.batch_size = batch_size
+        self.gamma = h_params['learning_algorithm']['gamma']
+        self.device = device
+        self.optimizer = None
 
 
 class DQN(LearningAlgorithms):
 
-    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, n_batches, batch_size, device, optimizer_settings):
         """
         The agent uses a deep Q network for the agent.
 
@@ -127,17 +138,23 @@ class DQN(LearningAlgorithms):
         :param layer_numbers: The number of internal layers of the neural network
         :param loss: a string designating the loss function
         :param state_size: the number of inputs for the neural network
+        :param n_batches: the number of batches to train the neural networks
+        :param batch_size: the amount of data in a batch
+        :param device: either the cpu or cuda for the gpu
+        :param optimizer: the optimizer used to improve the weights of the network
         :return:
         """
-        super().__init__(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
+        super().__init__(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, n_batches, batch_size, device)
 
         self.name = 'DQN'
 
         # create the policy network
-        self.network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
+        self.network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, device)
 
         # create the target network
-        self.target_network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size)
+        self.target_network = Network(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, device)
+
+        self.optimizer = Optimizer.get_optimizer(self.network.parameters(), optimizer_settings)
 
     def get_output(self, inp, is_grad=False):
         """
@@ -146,11 +163,77 @@ class DQN(LearningAlgorithms):
         :param inp: input list. Should be the observations from the simulation
         :return:
         """
+        inp = ReplayMemory.convert_numpy_to_tensor(self.device, inp)
         if is_grad:
             return self.network.forward(torch.Tensor(inp))
         else:
             with torch.no_grad():
                 return self.network.forward(torch.Tensor(inp))
+
+    def train_agent(self, replay_storage):
+        """
+        train the networks with the available data
+        :return:
+        """
+
+        loss = None
+        c = 0
+        while c < self.n_batches:
+
+            transitions = replay_storage.sample(self.batch_size)
+            if transitions is None:
+                return
+
+            batch = replay_storage.transition(*zip(*transitions))
+
+            non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                    batch.next_state)), device=self.device, dtype=torch.bool)
+            non_final_next_states = torch.cat([s for s in batch.next_state
+                                               if s is not None])
+
+            state_batch = torch.cat(batch.state)
+            action_batch = torch.cat(batch.action)
+            reward_batch = torch.cat(batch.reward)
+
+            # use the policy network
+            #state_action_values = self.network(state_batch).gather(1, action_batch.type(torch.int64))
+            tmp_out = self.network(state_batch)
+            state_action_values = torch.gather(tmp_out,1,action_batch.type(torch.int64))
+
+            #next_state_values = torch.zeros(self.h_params['learning_agent']['batch_size'], device=self.device)
+            next_state_values = torch.zeros(self.batch_size, device=self.device)
+            next_state_values[non_final_mask] = self.target_network(non_final_next_states).max(1)[0].detach()
+
+            expected_state_action_values = torch.add(
+                torch.mul(torch.reshape(next_state_values, (len(next_state_values), 1)),
+                          self.gamma), reward_batch)
+
+            if self.loss == 'huber':
+                loss = F.smooth_l1_loss(state_action_values.type(torch.double),
+                                        expected_state_action_values.type(torch.double))
+            elif self.loss == 'mse':
+                loss = F.mse_loss(state_action_values.type(torch.double),
+                                  expected_state_action_values.type(torch.double))
+            else:
+                raise ValueError('Given loss is currently not supported')
+
+            # Optimize the model
+            self.optimizer.zero_grad()
+            loss.backward()
+            for param in self.network.parameters():
+                param.grad.data.clamp_(-1, 1)
+            self.optimizer.step()
+
+            c += 1
+
+        return loss
+
+    def update_target_network(self):
+        """
+        copies the values of the policy network into the target network
+        :return:
+        """
+        self.target_network.load_state_dict(self.network.state_dict())
 
 class DDPG(LearningAlgorithms):
 

@@ -182,11 +182,11 @@ class Environment(ABC):
         min_dst = np.infty  # the minimum distance of the boat to the goal
         # boolean for if the agent has reached a terminal state prior to the end of the episode
         is_terminal = False
-        end_step = True  # if this is true the agent will know to make another prediction
+        end_step = False  # if this is true the agent will know to log the data and make another prediction
         while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            interim_state, interim_action, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
+            interim_state, interim_action, interim_action_meta_data, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
 
             # check if the distance is closer than any previous distances. If so save the distance
             if curr_dist < min_dst:
@@ -196,6 +196,7 @@ class Environment(ABC):
             if state is None:
                 state = interim_state
                 action = interim_action
+                action_meta_data = interim_action_meta_data
                 reward = 0.0
 
             if end_step or is_terminal:
@@ -218,6 +219,7 @@ class Environment(ABC):
                 # reset the state to None for the agents next step
                 state = None
                 action = None
+                action_meta_data = None
                 reward = 0.0
             else:
                 reward += interim_reward
@@ -228,7 +230,9 @@ class Environment(ABC):
 
             # add simulation specific history
             action = interim_action
-            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success],[action]))
+
+            action_meta_data = interim_action_meta_data
+            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success],[action],[action_meta_data]))
             self.history.iloc[step_num] = telemetry
 
             # add simulation specific data from the learner. destination distance
@@ -311,7 +315,7 @@ class Environment(ABC):
                 raw_ouputs = self.agent.get_output(inp)
 
                 # convert the action to a command change
-                propeller_angle_change, power_change, action, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
+                propeller_angle_change, power_change, action, action_meta_data, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
 
                 # apply the actuator changes to the mover
                 power = power_change + mover.state_dict['power']
@@ -365,7 +369,7 @@ class Environment(ABC):
                 # updates sensors
                 dest_dst = mover.state_dict['dest_dist']
 
-        return state, action, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
+        return state, action, action_meta_data, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
 
     def launch_training(self):
         """
@@ -653,7 +657,8 @@ class Environment(ABC):
                                                 replan_rate=self.h_params['action_description']['replan_rate'],
                                                 controller=controller,
                                                 angle_adj_lst=self.h_params['action_description']['angle_values'],
-                                                power_change_lst=self.h_params['action_description']['power_values'])
+                                                power_change_lst=self.h_params['action_description']['power_values'],
+                                                epsilon_schedule=self.h_params['action_description']['eps_schedule'])
 
         elif action_type == 'discrete' and action_designation == 'direct':
             # agent is directly controlling the actuators with discrete choices
@@ -673,6 +678,9 @@ class Environment(ABC):
         # add columns to the history header for the simulation
         for i in range(selection_size):
             self.header.append('a'+str(i))
+
+        # add column for action meta data
+        self.header.append('action_meta_data')
 
         return action_size, ao, reset_to_max_power
 

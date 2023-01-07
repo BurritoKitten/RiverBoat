@@ -31,16 +31,18 @@ def select_reward_function(h_params, ao):
 
         crash_reward = reward_info['crash']
         success_reward = reward_info['success']
+        goal_dst = reward_info['goal_dst']
 
-        reward_func = InstantStepCrashSuccessReward(delta_t, crash_reward, success_reward)
+        reward_func = InstantStepCrashSuccessReward(delta_t, crash_reward, success_reward, goal_dst)
 
     elif reward_info['name'] == 'MultiStepCrashSuccessReward':
 
         refresh_rate = reward_info['agent_step_size']
         crash_reward = reward_info['crash']
         success_reward = reward_info['success']
+        goal_dst = reward_info['goal_dst']
 
-        reward_func = MultiStepCrashSuccessReward(crash_reward, refresh_rate, success_reward)
+        reward_func = MultiStepCrashSuccessReward(crash_reward, refresh_rate, success_reward, goal_dst)
     else:
         raise ValueError("The reward function selected is currently not supported. Please check the spelling or define a new function.")
 
@@ -52,7 +54,7 @@ def select_reward_function(h_params, ao):
 
 class RewardFunction(ABC):
 
-    def __init__(self, name):
+    def __init__(self, name, goal_dist):
         """
         base class for all reward functions to extend. Uses the new state information to determine if a reward is given
         to the agent and if the simulation has reached a terminating state.
@@ -61,6 +63,7 @@ class RewardFunction(ABC):
         self.is_terminal = False
         self.is_crashed = False  # boolean for if the mover has crashed
         self.is_success = False  # boolean for if destination has been reached
+        self.goal_dist = goal_dist  # distance to destination that denotes success [m]
 
     @abstractmethod
     def get_reward(self, t, mover_dict):
@@ -92,14 +95,14 @@ class RewardFunction(ABC):
 
 class InstantStepCrashSuccessReward(RewardFunction):
 
-    def __init__(self,delta_t, crash_reward, success_reward):
+    def __init__(self,delta_t, crash_reward, success_reward, goal_dst):
         """
         This reward only gives a reward for getting closer to the goal. The reward is proportional to the distance
         closed towards the destination. If the distance increases, no reward is given. If the boat is too close to
         another obstacle, the reward is negative.
         :param dest_dst the initial distance between the
         """
-        super().__init__("RewardEveryStepForGettingCloserToGoal")
+        super().__init__("RewardEveryStepForGettingCloserToGoal", goal_dst)
 
         self.delta_t = delta_t
         self.old_dst = None
@@ -128,8 +131,7 @@ class InstantStepCrashSuccessReward(RewardFunction):
 
                 self.old_dst = mover.state_dict['dest_dist']
 
-                # TODO put this into the input file
-                if mover.state_dict['dest_dist'] < 5.0:
+                if mover.state_dict['dest_dist'] < self.goal_dist:
                     self.is_terminal = True
                     self.is_success = True
                     reward += self.success_reward
@@ -174,21 +176,31 @@ class InstantStepCrashSuccessReward(RewardFunction):
 
 class MultiStepReward(RewardFunction):
 
-    def __init__(self, name, refresh_rate):
+    def __init__(self, name, refresh_rate, goal_dst):
         """
         This is the base class for reward functions that do not operate over only one simulation time step.
         :param name: the name of the reward, usefull in debugging
-        :param refresh_rate: the rate at which cummulative reward is calculated.
+        :param refresh_rate: the rate at which cumulative reward is calculated.
+        :param goal_dst: the distance of the boat to the destination needed to achieve success
         """
-        super().__init__(name)
+        super().__init__(name, goal_dst)
         self.refresh_rate = refresh_rate
         self.last_reward_time = 0.0
         self.cumulative_reward = 0.0
 
 class MultiStepCrashSuccessReward(MultiStepReward):
 
-    def __init__(self, crash_reward, refresh_rate, success_reward):
-        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate)
+    def __init__(self, crash_reward, refresh_rate, success_reward, goal_dst):
+        """
+        A simple reward function that gets reward for succeeding and crashing. The only other reward is if the boat
+        closes the distance to the destination
+
+        :param crash_reward: the reward for crashing the boat
+        :param refresh_rate: the rate at which a new agent action is choosen at
+        :param success_reward: the reward for reaching a success state
+        :param goal_dst: the distance where a boat is considered to have reached its goal
+        """
+        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
 
         self.crash_reward = crash_reward
         self.success_reward = success_reward
@@ -206,25 +218,24 @@ class MultiStepCrashSuccessReward(MultiStepReward):
         for name, mover in mover_dict.items():
             if mover.can_learn:
                 # this is the river boat
-                delta_range = self.old_dst - mover.state_dict['dest_dst']
+                delta_range = self.old_dst - mover.state_dict['dest_dist']
                 if delta_range >= 0:
                     # positive reward if boat got closer to the goal
-                    self.cumulative_reward += delta_range / (5.0 * self.delta_t)
+                    self.cumulative_reward += delta_range / (5.0 * mover.state_dict['delta_t'])
 
-                self.old_dst = mover.state_dict['dest_dst']
+                self.old_dst = mover.state_dict['dest_dist']
 
-                # TODO put this into the input file
-                if mover.state_dict['dest_dst'] < 5.0:
+                if mover.state_dict['dest_dist'] < self.goal_dist:
                     self.is_terminal = True
+                    self.is_success = True
                     self.cumulative_reward += self.success_reward
 
                 # check if crashed
                 min_dst = np.infty
-                sensors = mover.get_sensors()
-                for sensor in sensors:
+                for sensor in mover.sensors:
                     raw = sensor.get_raw_measurements()
                     raw_keys = raw.keys()
-                    dst_key = [key for key in raw_keys if 'dest' in key][0]
+                    dst_key = [key for key in raw_keys if 'dist' in key][0]
                     if raw[dst_key] < min_dst:
                         min_dst = raw[dst_key]
 
@@ -249,3 +260,20 @@ class MultiStepCrashSuccessReward(MultiStepReward):
             self.cumulative_reward = 0.0
 
         return reward
+
+    def reset(self, mover_dict):
+        """
+        Reset the old distance so the reward function can determine if the step reduced the distance to the goal.
+        :param mover_dict:
+        :return:
+        """
+
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # updates sensors
+                self.old_dst = mover.state_dict['dest_dist']
+
+        # reset the flags for tracking states
+        self.is_crashed = False
+        self.is_success = False
+        self.is_terminal = False

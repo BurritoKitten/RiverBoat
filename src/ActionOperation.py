@@ -184,7 +184,12 @@ class DirectControlActionDiscrete(ActionOperation):
             propeller_change = self.prop_change_angle_lst[prop_idx]
             power_change = self.power_change_lst[power_idx]
 
-        return propeller_change, power_change, action_code, True
+        # propeller angle change [rad]
+        # power change [watt]
+        # index of network output
+        # meta data. Only used for path action types
+        # end step. For direct control every step is an ending step
+        return propeller_change, power_change, action_code, None, True
 
     def get_action_size(self):
         """

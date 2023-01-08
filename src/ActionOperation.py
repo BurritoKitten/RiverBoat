@@ -163,7 +163,7 @@ class DirectControlActionDiscrete(ActionOperation):
                 break
         if np.random.random() <= eps_threshold:
             # choose random action
-            action_code = np.random.randint(0,len(raw_actions))
+            action_code = np.random.randint(0,len(raw_actions[0]))
         else:
             # choose value with maximal q value
             action_code = raw_actions.numpy().argmax()
@@ -445,7 +445,7 @@ class PathActionOperation(ActionOperation):
         for i in range(len(self.control_points)):
             for j in range(len(self.control_points[0])):
                 action_meta_data += str(self.control_points[i][j])
-                if j >= len(self.control_points[0]) - 1:
+                if j < len(self.control_points[0]) - 1:
                     action_meta_data += '_'
             action_meta_data += ';'
         return action_meta_data
@@ -641,7 +641,7 @@ class PathDiscreteCp(PathActionOperation):
             if np.random.random() <= eps_threshold:
                 # choose random action
                 # TODO check if this is actually giving random numbers
-                action_code = np.random.randint(0, high=len(raw_actions))
+                action_code = np.random.randint(0, high=len(raw_actions[0]))
             else:
                 # choose value with maximal q value
                 action_code = raw_actions.numpy().argmax()

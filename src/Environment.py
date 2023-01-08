@@ -34,7 +34,7 @@ class Environment(ABC):
         self.ao = None  # action operation. Used to convert raw outputs to inputs
         self.reward_func = None  # reward function for the simulation
         self.device = 'cuda' # TODO need to check this
-        self.header = ['time', 'reward', 'is_terminal', 'is_crashed', 'is_reached'] # history data frame header
+        self.header = ['time', 'reward', 'is_terminal', 'is_crashed', 'is_reached', 'destination_x','destination_y'] # history data frame header
         self.history = None  # eventually a data frame to hold information about the simulation
 
     #@abstractmethod
@@ -232,7 +232,7 @@ class Environment(ABC):
             action = interim_action
 
             action_meta_data = interim_action_meta_data
-            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success],[action],[action_meta_data]))
+            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success, self.destination[0], self.destination[1]],[action],[action_meta_data]))
             self.history.iloc[step_num] = telemetry
 
             # add simulation specific data from the learner. destination distance
@@ -502,8 +502,8 @@ class Environment(ABC):
             pass
 
         # create sub folders
-        sub_folder_names = ["\Models","\TrainingHistory","\TrainingHistory\Data","\TrainingHistory\Graphs",
-                            "\Baseline","\Baseline\Data","\Baseline\Graphs",
+        sub_folder_names = ["\Models","\TrainingHistory","\TrainingHistory\Data","\TrainingHistory\Graphs","\TrainingHistory\Videos",
+                            "\Baseline","\Baseline\Data","\Baseline\Graphs","\Baseline\Videos",
                             "\RobustBaseline", "\RobustBaseline\Data", "\RobustBaseline\Graphs",
                             "\Progress","\Progress\Data","\Progress\Graphs"]
         for sfn in sub_folder_names:

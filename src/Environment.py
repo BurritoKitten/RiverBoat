@@ -175,8 +175,7 @@ class Environment(ABC):
         self.history = pd.DataFrame(data=np.zeros(((max_steps), len(self.header))),columns=self.header)
 
         # holding the state prior to a step. Initialized as none so the loop knows to use the first state as its state
-        state = None
-        action = None
+        reset_state = True
         reward = 0.0
         cumulative_reward = 0.0
         min_dst = np.infty  # the minimum distance of the boat to the goal
@@ -193,11 +192,12 @@ class Environment(ABC):
                 min_dst = curr_dist
 
             # if the state is empty update it to the interim state
-            if state is None:
+            if reset_state:
                 state = interim_state
                 action = interim_action
                 action_meta_data = interim_action_meta_data
-                reward = 0.0
+                reward = interim_reward
+                reset_state = False
 
             if end_step or is_terminal:
                 # add data to memory because the agents step has completed.
@@ -217,10 +217,7 @@ class Environment(ABC):
                 self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
 
                 # reset the state to None for the agents next step
-                state = None
-                action = None
-                action_meta_data = None
-                reward = 0.0
+                reset_state = True
             else:
                 reward += interim_reward
 

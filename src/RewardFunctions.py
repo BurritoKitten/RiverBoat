@@ -35,6 +35,13 @@ def select_reward_function(h_params, ao):
 
         reward_func = InstantStepCrashSuccessReward(delta_t, crash_reward, success_reward, goal_dst)
 
+    elif reward_info['name'] == 'EveryStepForGettingCloserToGoalAndHeading':
+        crash_reward = reward_info['crash']
+        success_reward = reward_info['success']
+        goal_dst = reward_info['goal_dst']
+
+        reward_func = InstantStepHeadingCrashSuccessReward(delta_t, crash_reward, success_reward, goal_dst)
+
     elif reward_info['name'] == 'MultiStepCrashSuccessReward':
 
         refresh_rate = reward_info['agent_step_size']
@@ -149,11 +156,16 @@ class InstantStepCrashSuccessReward(RewardFunction):
                 for tmp_name, tmp_mover in mover_dict.items():
                     if tmp_name != name:
                         # not the same mover. Calculations currently only support circle obstacles
-                        if tmp_mover.state_dict['radius'] >= min_dst:
+                        if tmp_mover.state_dict['radius'] >= min_dst and min_dst >= 1e-3:
                             # boat has crashed
                             self.is_terminal = True
                             self.is_crashed = True
                             reward = self.crash_reward
+
+        # if the boat is over 300 meters away from the goal, end the simulation. It is assumed that if the boat goes
+        # too far it will not return and this saves computation
+        if self.old_dst >= 200.0:
+            self.is_terminal = True
 
         return reward
 
@@ -168,6 +180,100 @@ class InstantStepCrashSuccessReward(RewardFunction):
             if mover.can_learn:
                 # updates sensors
                 self.old_dst = mover.state_dict['dest_dist']
+
+        # reset the flags for tracking states
+        self.is_crashed = False
+        self.is_success = False
+        self.is_terminal = False
+
+class InstantStepHeadingCrashSuccessReward(RewardFunction):
+
+    def __init__(self,delta_t, crash_reward, success_reward, goal_dst):
+        """
+        This reward gives a reward for getting closer to the goal. The reward is proportional to the distance
+        closed towards the destination. If the distance increases, no reward is given. If the boat is too close to
+        another obstacle, the reward is negative. A reward is also given for pointing that boat at the goal state
+        :param dest_dst the initial distance between the
+        """
+        super().__init__("RewardEveryStepForGettingCloserToGoal", goal_dst)
+
+        self.delta_t = delta_t
+        self.old_dst = None
+        self.crash_reward = crash_reward
+        self.success_reward = success_reward
+        self.heading_old = None
+        self.heading_reward = 0.075
+
+    def get_reward(self, t, mover_dict):
+        """
+        calculate the reward for the current step. Also set if the simulation is completed.
+        :param t: time
+        :param mover_dict: dictionary containing all of the mover information
+        :return:
+        """
+
+        self.is_crashed = False
+        self.is_success = False
+
+        reward = 0.0
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # this is the river boat
+                delta_range = self.old_dst - mover.state_dict['dest_dist']
+                if delta_range >= 0:
+                    # positive reward if boat got closer to the goal
+                    reward += delta_range/(5.0*self.delta_t)
+
+                self.old_dst = mover.state_dict['dest_dist']
+
+                if mover.state_dict['dest_dist'] < self.goal_dist:
+                    self.is_terminal = True
+                    self.is_success = True
+                    reward += self.success_reward
+
+                # Check if heading is point boat more towards
+                if np.abs(mover.state_dict['mu']) < np.abs(self.heading_old) or np.abs(mover.state_dict['mu']) <= np.deg2rad(5.0):
+                    reward += (np.pi - abs(mover.state_dict['mu'])) * (np.pi - abs(mover.state_dict['mu'])) * self.heading_reward
+                self.heading_old = mover.state_dict['mu']
+
+                # check if crashed
+                min_dst = np.infty
+                for sensor in mover.sensors:
+                    raw = sensor.get_raw_measurements()
+                    raw_keys = raw.keys()
+                    dst_key = [key for key in raw_keys if 'dist' in key][0]
+                    if raw[dst_key] < min_dst:
+                        min_dst = raw[dst_key]
+
+                # check if minimum distance is less than size of any obstacles
+                for tmp_name, tmp_mover in mover_dict.items():
+                    if tmp_name != name:
+                        # not the same mover. Calculations currently only support circle obstacles
+                        if tmp_mover.state_dict['radius'] >= min_dst and min_dst >= 1e-3:
+                            # boat has crashed
+                            self.is_terminal = True
+                            self.is_crashed = True
+                            reward = self.crash_reward
+
+        # if the boat is over 300 meters away from the goal, end the simulation. It is assumed that if the boat goes
+        # too far it will not return and this saves computation
+        if self.old_dst >= 200.0:
+            self.is_terminal = True
+
+        return reward
+
+    def reset(self, mover_dict):
+        """
+        Reset the old distance so the reward function can determine if the step reduced the distance to the goal.
+        :param mover_dict:
+        :return:
+        """
+
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # updates sensors
+                self.old_dst = mover.state_dict['dest_dist']
+                self.heading_old = mover.state_dict['mu']
 
         # reset the flags for tracking states
         self.is_crashed = False

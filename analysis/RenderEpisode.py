@@ -70,7 +70,7 @@ def generate_buffer_verts(samples, buffer):
 
 class AnimateEpisode:
 
-    def __init__(self, df, trial_group, trial_number, file_name):
+    def __init__(self, k, df, trial_group, trial_number, file_name):
         """
 
         :param df:
@@ -85,16 +85,23 @@ class AnimateEpisode:
         #tolerance = generate_buffer_verts(nav_points, buffer=5.0)
 
         # get the maximum and minimum values of the simulation
-        max_x = 150.0 #max([self.df['x_pos'].max,self.df['static_circle_0_x'].max])
-        min_x = -50.0 #max([self.df['x_pos'].min, self.df['static_circle_0_x'].min])
-        max_y = 150.0
-        min_y = -50.0
+        try:
+            max_x = max([150.0,max(self.df['x_pos']),max(self.df['static_circle_0_x'])])
+            min_x = min([-50.0,min(self.df['x_pos']), min(self.df['static_circle_0_x'])])
+            max_y = max([150.0,max(self.df['y_pos']),max(self.df['static_circle_0_y'])])
+            min_y = min([-50.0,min(self.df['y_pos']), min(self.df['static_circle_0_y'])])
+        except:
+
+            max_x = max([150.0,max(self.df['x_pos'])])
+            min_x = min([-50.0,min(self.df['x_pos'])])
+            max_y = max([150.0,max(self.df['y_pos'])])
+            min_y = min([-50.0,min(self.df['y_pos'])])
 
         # loop helper
         self.c = 0
 
         sns.set_theme()
-        fig = plt.figure(0, figsize=(14, 10))
+        fig = plt.figure(k, figsize=(14, 10))
         spec = gridspec.GridSpec(ncols=2, nrows=3, figure=fig)
         ax1 = fig.add_subplot(spec[0:2, 0:2])
         ax2 = fig.add_subplot(spec[2, 0])
@@ -105,7 +112,7 @@ class AnimateEpisode:
         writer = Writer(fps=30, metadata=dict(artist='Nathan'), bitrate=1800)
 
         def animate(steps):
-            print('Frame >> ' + str(self.c))
+            print('Ep=' + str(k) + ' Frame >> ' + str(self.c))
             self.c = self.c + 1
 
             ax1.clear()
@@ -254,12 +261,15 @@ if __name__ == '__main__':
     # input controls.
     trial_group = 'Debugging'
     trial_number = 0
-    episode = 16
+    episodes = range(20)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
-    history = pd.read_csv('..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\TrainingHistory\\Data\\History_'+str(episode)+'.csv')
+    for k, episode in enumerate(episodes):
+        history = pd.read_csv('..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\TrainingHistory\\Data\\History_'+str(episode)+'.csv')
 
-    ae = AnimateEpisode(df=history, trial_group=trial_group, trial_number=trial_number, file_name='..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\TrainingHistory\\Videos\\History_'+str(episode)+'.mp4')
+        ae = AnimateEpisode(k, df=history, trial_group=trial_group, trial_number=trial_number, file_name='..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\TrainingHistory\\Videos\\History_'+str(episode)+'.mp4')
+
+
 

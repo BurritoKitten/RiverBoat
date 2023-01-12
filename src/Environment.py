@@ -66,7 +66,7 @@ class Environment(ABC):
                 # reset the river boats data
                 dst_to_dest = 0.0
 
-                while dst_to_dest <= 10.0:
+                while dst_to_dest <= 30.0:
                     mover.state_dict['x_pos'] = np.random.random() * domain
                     mover.state_dict['y_pos'] = np.random.random() * domain
                     dst_to_dest = np.sqrt((mover.state_dict['x_pos'] - self.destination[0]) ** 2 + (
@@ -438,7 +438,7 @@ class Environment(ABC):
 
         # write the header for overall training progress
         progress_file_name = "Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
-                               self.h_params['scenario']['trial_num'])+"/Progress/training_progress.csv"
+                               self.h_params['scenario']['trial_num'])+"/Progress/Data/training_progress.csv"
         with open(progress_file_name, 'w') as f:
             f.write('ep_num,cumulative_reward,is_crashed,is_success,min_dst\n')
             f.flush()

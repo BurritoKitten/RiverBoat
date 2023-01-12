@@ -86,15 +86,15 @@ class AnimateEpisode:
 
         # get the maximum and minimum values of the simulation
         try:
-            max_x = max([150.0,max(self.df['x_pos']),max(self.df['static_circle_0_x'])])
+            max_x = max([250.0,max(self.df['x_pos']),max(self.df['static_circle_0_x'])])
             min_x = min([-50.0,min(self.df['x_pos']), min(self.df['static_circle_0_x'])])
-            max_y = max([150.0,max(self.df['y_pos']),max(self.df['static_circle_0_y'])])
+            max_y = max([250.0,max(self.df['y_pos']),max(self.df['static_circle_0_y'])])
             min_y = min([-50.0,min(self.df['y_pos']), min(self.df['static_circle_0_y'])])
         except:
 
-            max_x = max([150.0,max(self.df['x_pos'])])
+            max_x = max([250.0,max(self.df['x_pos'])])
             min_x = min([-50.0,min(self.df['x_pos'])])
-            max_y = max([150.0,max(self.df['y_pos'])])
+            max_y = max([250.0,max(self.df['y_pos'])])
             min_y = min([-50.0,min(self.df['y_pos'])])
 
         # loop helper
@@ -107,13 +107,13 @@ class AnimateEpisode:
         ax2 = fig.add_subplot(spec[2, 0])
         ax3 = fig.add_subplot(spec[2, 1])
 
-        steps = len(df) - 1
+        steps = len(df)-1
         Writer = animation.writers['ffmpeg']
         writer = Writer(fps=30, metadata=dict(artist='Nathan'), bitrate=1800)
 
         def animate(steps):
             print('Ep=' + str(k) + ' Frame >> ' + str(self.c))
-            self.c = self.c + 1
+
 
             ax1.clear()
             ax2.clear()
@@ -122,11 +122,11 @@ class AnimateEpisode:
 
             # plot the boats current position
             # boats x,y location [m]
-            bx = self.df['x_pos'].iloc[self.c-1]
-            by = self.df['y_pos'].iloc[self.c-1]
-            hull_len = self.df['hull_length'].iloc[self.c-1]
-            hull_width = self.df['hull_width'].iloc[self.c - 1]
-            psi = self.df['psi'].iloc[self.c-1]
+            bx = self.df['x_pos'].iloc[self.c]
+            by = self.df['y_pos'].iloc[self.c]
+            hull_len = self.df['hull_length'].iloc[self.c]
+            hull_width = self.df['hull_width'].iloc[self.c]
+            psi = self.df['psi'].iloc[self.c]
             corners = [[hull_len / 2.0, -hull_width / 2.0],
                        [hull_len / 2.0, hull_width / 2.0],
                        [-hull_len / 2.0, hull_width / 2.0],
@@ -148,10 +148,10 @@ class AnimateEpisode:
             # draw boats trajectory
             x_traj = self.df['x_pos'].values
             y_traj = self.df['y_pos'].values
-            ax1.plot(x_traj[:self.c-1],y_traj[:self.c-1],color='tab:purple',label='Trajectory')
+            ax1.plot(x_traj[:self.c],y_traj[:self.c],color='tab:purple',label='Trajectory')
 
             # draw propeller angle
-            delta = self.df['delta'].iloc[self.c-1]
+            delta = self.df['delta'].iloc[self.c]
             prop_end_x = -hull_len / 2.0
             prop_end_y = 0.0
             prop_end_x_new = prop_end_x * np.cos(psi) - prop_end_y * np.sin(psi) + bx
@@ -169,7 +169,7 @@ class AnimateEpisode:
             # draw path if applicable
             try:
                 # draw the path
-                cp = self.df['action_meta_data'].iloc[self.c-1]
+                cp = self.df['action_meta_data'].iloc[self.c]
                 cp = cp.split(';')
 
                 for i, tmp_cp in enumerate(cp):
@@ -200,7 +200,7 @@ class AnimateEpisode:
 
 
             # draw the destination
-            circle_destination = plt.Circle((self.df['destination_x'][self.c-1], self.df['destination_y'][self.c-1]), 5.0, color='tab:green',alpha=0.2,label='Destination')
+            circle_destination = plt.Circle((self.df['destination_x'][self.c], self.df['destination_y'][self.c]), 5.0, color='tab:green',alpha=0.2,label='Destination')
             ax1.add_patch(circle_destination)
 
             # draw the obstacles
@@ -212,13 +212,10 @@ class AnimateEpisode:
                     unique_obs.append(int(parts[2]))
             for part in unique_obs:
                 circle_destination = plt.Circle(
-                    (self.df['static_circle_'+str(part)+'_x'][self.c - 1], self.df['static_circle_'+str(part)+'_y'][self.c - 1]), 10.0,
+                    (self.df['static_circle_'+str(part)+'_x'][self.c], self.df['static_circle_'+str(part)+'_y'][self.c]), 10.0,
                     color='tab:red', alpha=0.2, label='Obstacle')
                 ax1.add_patch(circle_destination)
 
-            #ax1.add_collection(p)
-            #boat_patch = mpatches.Patch(color='tab:blue', alpha=0.2, label='Boat')
-            #ax1.legend(handles=[boat_patch])
             ax1.legend()
             ax1.set_xlim([min_x,max_x])
             ax1.set_ylim([min_y, max_y])
@@ -226,20 +223,23 @@ class AnimateEpisode:
             # plot the reward
             time = self.df['time'].values
             reward = self.df['reward'].values
-            ax2.plot(time[:self.c - 1], reward[:self.c - 1], color='tab:blue', label='Trajectory')
+            ax2.plot(time, reward, color='tab:blue', label='Trajectory')
+            ax2.scatter(time[self.c], reward[self.c], color='tab:olive')
             ax2.set_ylabel('Reward [-]')
             ax2.set_xlabel('Time [s]')
-            ax2.set_xlim([min(time),max(time)])
+            ax2.set_xlim([min(time),max(time)+1])
             if min(reward) != max(reward):
                 ax2.set_ylim([min(reward)-0.05*(max(reward)-min(reward)), max(reward)+0.05*(max(reward)-min(reward))])
 
 
             # plot distance to the goal
             dest_dist = self.df['dest_dist'].values
-            ax3.plot(time[:self.c - 1], dest_dist[:self.c - 1], color='tab:blue', label='Trajectory')
+            #ax3.plot(time[:self.c], dest_dist[:self.c], color='tab:blue', label='Trajectory')
+            ax3.plot(time, dest_dist, color='tab:blue', label='Trajectory')
+            ax3.scatter(time[self.c], dest_dist[self.c],color='tab:olive')
             ax3.set_ylabel('Dist to Dest [m]')
             ax3.set_xlabel('Time [s]')
-            ax3.set_xlim([min(time), max(time)])
+            ax3.set_xlim([min(time), max(time)+1])
             ax3.set_ylim([min(dest_dist)-0.05*(max(dest_dist)-min(dest_dist)), max(dest_dist)+0.05*(max(dest_dist)-min(dest_dist))])
 
             # plot distance to any obstacles
@@ -247,8 +247,10 @@ class AnimateEpisode:
             plt.suptitle('Trajectories for Episode=' + str(episode) + ' Trial Group=' + str(
                 trial_group) + ' Trial Number=' + str(trial_number) )
 
+            self.c = self.c + 1
+
         # create the video
-        ani = animation.FuncAnimation(fig, animate, frames=steps, interval=20, blit=False)
+        ani = animation.FuncAnimation(fig, animate, frames=steps, interval=0.1, blit=False)
 
         # save the video
         ani.save(self.file_name, writer=writer)
@@ -259,9 +261,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'Debugging'
+    trial_group = 'DebuggingDirectControl'
     trial_number = 0
-    episodes = range(20)
+    episodes = [253]
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

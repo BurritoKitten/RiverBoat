@@ -204,6 +204,7 @@ class Environment(ABC):
                 next_state = interim_next_state
 
                 # convert the tuple to tensors
+                #tmp = list(state.values())
                 state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device,list(state.values()))
                 next_state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, list(next_state.values()))
                 #action_tensor = torch.tensor([action]).to(self.device)
@@ -264,6 +265,16 @@ class Environment(ABC):
 
             # add history together
             total_history = pd.concat([total_history, tmp_histroy], axis=1)
+
+        # add data from learning agent
+        la_history = self.agent.output_history
+        la_history = np.reshape(la_history,(len(la_history),len(la_history[0])))
+        columns = []
+        for i in range(len(la_history[0])):
+            columns.append('Network_output_'+str(i))
+        la_history = pd.DataFrame(data=la_history,columns=columns)
+        total_history = pd.concat([total_history,la_history], axis=1)
+        self.agent.reset_output_history()
 
         # write total history out to a file
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
@@ -468,7 +479,8 @@ class Environment(ABC):
             if elapsed_episodes > 0 and elapsed_episodes % self.h_params['learning_algorithm']['target_frequency'] == 0:
 
                 # update the target networks parameters
-                self.agent.target_network.load_state_dict(self.agent.network.state_dict())
+                #self.agent.target_network.load_state_dict(self.agent.network.state_dict())
+                self.agent.update_target_network()
 
                 # save the networks
                 torch.save(self.agent.network.state_dict(),
@@ -531,45 +543,48 @@ class Environment(ABC):
         :return: none
         """
 
-        sensors_data = self.h_params['sensors']
+        try:
+            sensors_data = self.h_params['sensors']
 
-        for name, sensor in sensors_data.items():
+            for name, sensor in sensors_data.items():
 
-            if 'lidar_' in name:
-                # create a ProcessedLidar object that simulates the measurements after the raw lidar data has been
-                # filtered and obstacles more succintly defined
+                if 'lidar_' in name:
+                    # create a ProcessedLidar object that simulates the measurements after the raw lidar data has been
+                    # filtered and obstacles more succintly defined
 
-                measurement_df = pd.DataFrame(columns=['name','norm_value','norm_method'])
-                meas_var_info = sensor['max_range']
-                meas_var_info = meas_var_info.split(',')
-                row = dict()
-                row['name'] = 'max_range'
-                row['norm_value'] = float(meas_var_info[1])
-                row['norm_method'] = meas_var_info[2]
-                measurement_df = measurement_df.append(row, ignore_index=True)
+                    measurement_df = pd.DataFrame(columns=['name','norm_value','norm_method'])
+                    meas_var_info = sensor['max_range']
+                    meas_var_info = meas_var_info.split(',')
+                    row = dict()
+                    row['name'] = 'max_range'
+                    row['norm_value'] = float(meas_var_info[1])
+                    row['norm_method'] = meas_var_info[2]
+                    measurement_df = measurement_df.append(row, ignore_index=True)
 
-                meas_var_info = sensor['max_theta']
-                meas_var_info = meas_var_info.split(',')
-                row = dict()
-                row['name'] = 'max_theta'
-                row['norm_value'] = float(meas_var_info[1])
-                row['norm_method'] = meas_var_info[2]
-                measurement_df = measurement_df.append(row, ignore_index=True)
+                    meas_var_info = sensor['max_theta']
+                    meas_var_info = meas_var_info.split(',')
+                    row = dict()
+                    row['name'] = 'max_theta'
+                    row['norm_value'] = float(meas_var_info[1])
+                    row['norm_method'] = meas_var_info[2]
+                    measurement_df = measurement_df.append(row, ignore_index=True)
 
-                tmp_sensor = Sensors.ProcessedLidar(base_range=float(sensor['base_range']),base_theta=float(sensor['base_theta']),
-                                       name=name,measurement_norm_df=measurement_df,mover_owner_name=sensor['install_on'])
+                    tmp_sensor = Sensors.ProcessedLidar(base_range=float(sensor['base_range']),base_theta=float(sensor['base_theta']),
+                                           name=name,measurement_norm_df=measurement_df,mover_owner_name=sensor['install_on'])
 
-                for mover_name, mover in self.mover_dict.items():
-                    if mover_name == tmp_sensor.mover_owner_name:
-                        mover.add_sensor(tmp_sensor)
+                    for mover_name, mover in self.mover_dict.items():
+                        if mover_name == tmp_sensor.mover_owner_name:
+                            mover.add_sensor(tmp_sensor)
 
-                        # add the data from the sensor to the history for the mover
-                        tmp_state = tmp_sensor.get_raw_measurements()
-                        for ts in tmp_state:
-                            mover.history_header.append(mover.state_dict['name'] + '_' + ts)
+                            # add the data from the sensor to the history for the mover
+                            tmp_state = tmp_sensor.get_raw_measurements()
+                            for ts in tmp_state:
+                                mover.history_header.append(mover.state_dict['name'] + '_' + ts)
 
-            else:
-                raise ValueError('Sensor not currently supported')
+                else:
+                    raise ValueError('Sensor not currently supported')
+        except:
+            pass
 
     def add_entities(self):
         """

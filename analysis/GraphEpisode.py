@@ -26,20 +26,14 @@ def graph_episode(k, df, trial_group, trial_number, file_name):
     fig = plt.figure(0, figsize=(14, 10))
     spec = gridspec.GridSpec(ncols=4, nrows=4, figure=fig)
     ax1 = fig.add_subplot(spec[0:2, 0:2])
-    ax2 = fig.add_subplot(spec[0, 2])
-    ax3 = fig.add_subplot(spec[0, 3])
-    ax4 = fig.add_subplot(spec[1, 2])
-    ax5 = fig.add_subplot(spec[1, 3])
+    ax2 = fig.add_subplot(spec[0:2, 2:4])
 
-    ax6 = fig.add_subplot(spec[2, 0])
-    ax7 = fig.add_subplot(spec[2, 1])
-    ax8 = fig.add_subplot(spec[2, 2])
-    ax9 = fig.add_subplot(spec[2, 3])
+    ax3 = fig.add_subplot(spec[2:4, 0:2])
+    ax4 = fig.add_subplot(spec[2, 2])
+    ax5 = fig.add_subplot(spec[2, 3])
 
-    ax10 = fig.add_subplot(spec[3, 0])
-    ax11 = fig.add_subplot(spec[3, 1])
-    ax12 = fig.add_subplot(spec[3, 2])
-    ax13 = fig.add_subplot(spec[3, 3])
+    ax6 = fig.add_subplot(spec[3, 2])
+    ax7 = fig.add_subplot(spec[3, 3])
 
 
     # graph trajectory
@@ -59,7 +53,52 @@ def graph_episode(k, df, trial_group, trial_number, file_name):
     ax1.set_xlabel('x [m]')
     ax1.set_ylabel('y [m]')
 
+    # graph q values
+    q_val_header = [n for n in list(df.columns) if 'Network_output' in n]
+    df_q_vals = df[q_val_header]
+    df_q_vals['mean'] = df_q_vals.mean(axis=1)
+    df_q_vals['min'] = df_q_vals.min(axis=1)
+    df_q_vals['max'] = df_q_vals.max(axis=1)
+    ax2.plot(df['time'].values,df_q_vals['max'],label='max')
+    ax2.plot(df['time'].values, df_q_vals['min'], label='min')
+    ax2.plot(df['time'].values, df_q_vals['mean'], label='mean')
+    ax2.legend()
+    ax2.set_xlabel('Time [s]')
+    ax2.set_ylabel('Q value')
 
+    # graph angles
+    ax3.plot(df['time'].values,np.rad2deg(df['psi'].values),label='$\phi$ hull angle')
+    ax3.plot(df['time'].values, np.rad2deg(df['delta'].values), label='$\delta$ propeller angle')
+    ax3.plot(df['time'].values, np.rad2deg(df['mu'].values), label='$\mu$ angle to dest')
+    ax3.plot([0,max(df['time'].values)],[45,45],'k--',label='Max Propeller')
+    ax3.plot([0, max(df['time'].values)], [-45, -45], 'k--')
+    ax3.legend()
+    ax3.set_xlabel('Time [s]')
+    ax3.set_ylabel('Angle [deg]')
+
+    # reward
+    ax4.plot(df['time'].values, df['reward'].values)
+    ax4.set_xlabel('Time [s]')
+    ax4.set_ylabel('Reward [-]')
+
+    # velocities
+    ax5.plot(df['time'].values, df['v_xp'].values,label='x_p')
+    ax5.plot(df['time'].values, df['v_yp'].values,label='y_p')
+    ax5.legend()
+    ax5.set_xlabel('Time [s]')
+    ax5.set_ylabel('Velocities [m/s]')
+
+    # velocities
+    ax6.plot(df['time'].values, df['dest_dist'].values)
+    ax6.plot([0, max(df['time'].values)], [5.0,5.0], label='Threshold')
+    ax6.legend()
+    ax6.set_xlabel('Time [s]')
+    ax6.set_ylabel('Distance to Destination [m]')
+
+    # fuel
+    ax7.plot(df['time'].values, df['fuel'].values)
+    ax7.set_xlabel('Time [s]')
+    ax7.set_ylabel('Fuel [kg]')
 
     plt.suptitle('Trajectories for Episode=' + str(episode) + ' Trial Group=' + str(
         trial_group) + ' Trial Number=' + str(trial_number))
@@ -73,9 +112,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'Debugging'
-    trial_number = 0
-    episodes = [1998]  # range(20)
+    trial_group = 'DebuggingDirectControl'
+    trial_number = 7
+    episodes = range(500)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

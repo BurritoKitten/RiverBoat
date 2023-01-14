@@ -28,7 +28,7 @@ class Network(nn.Module):
         :param state_size: the number of inputs for the neural network
         """
         super(Network, self).__init__()
-
+        '''
         # build the input and hidden layers
         self.layers = []
         for i, layer in enumerate(layer_numbers):
@@ -67,13 +67,21 @@ class Network(nn.Module):
 
         # prepare dropout layers
         self.drop = nn.Dropout(h_params['learning_algorithm']['drop_out'])
+        '''
+        self.fc1 = nn.Linear(state_size, 100, device=device)
+        self.fc2 = nn.Linear(100,100, device=device)
+        self.out = nn.Linear(100, action_size, device=device)
+        self.relu = torch.nn.ReLU()
+        #self.drop = nn.Dropout(h_params['learning_agent']['drop_out'])
 
-    def forward(self, x):
+    def forward(self, z):
         """
         Override the forward function to generate an ouput from the network
 
         :param x: input to the network. Should be a state vector that is normalized
         :return: the output of the network
+        """
+
         """
         for layer in self.layers:
             x = layer(x)
@@ -85,6 +93,14 @@ class Network(nn.Module):
         # if not a linear output
         if self.last_active is not None:
             x = self.last_active(x)
+        """
+
+        x = self.fc1(z)
+        x = self.relu(x)
+        x = self.fc2(x)
+        #x = self.drop(x)
+        x = self.relu(x)
+        x = self.out(x)
 
         return x
 
@@ -124,6 +140,15 @@ class LearningAlgorithms:
         self.gamma = h_params['learning_algorithm']['gamma']
         self.device = device
         self.optimizer = None
+
+        self.output_history = []
+
+    def reset_output_history(self):
+        """
+        Reset stored values from the output of the network
+        :return:
+        """
+        self.output_history = []
 
 
 class DQN(LearningAlgorithms):
@@ -165,10 +190,14 @@ class DQN(LearningAlgorithms):
         """
         inp = ReplayMemory.convert_numpy_to_tensor(self.device, inp)
         if is_grad:
-            return self.network.forward(torch.Tensor(inp))
+            out = self.network.forward(torch.Tensor(inp))
+            #self.output_history.append(out.to('cpu').numpy()[0])
+            return out
         else:
             with torch.no_grad():
-                return self.network.forward(torch.Tensor(inp))
+                out = self.network.forward(torch.Tensor(inp))
+                self.output_history.append(out.to('cpu').numpy()[0])
+                return out
 
     def train_agent(self, replay_storage):
         """
@@ -197,11 +226,15 @@ class DQN(LearningAlgorithms):
 
             # use the policy network
             #state_action_values = self.network(state_batch).gather(1, action_batch.type(torch.int64))
-            tmp_out = self.network(state_batch)
-            state_action_values = torch.gather(tmp_out,1,action_batch.type(torch.int64))
+            #tmp_out = self.network(state_batch)
+            #tmp_2 = self.network(state_batch).gather(1, action_batch.type(torch.int64))
+            #state_action_values = torch.gather(tmp_out,1,action_batch.type(torch.int64))
+            state_action_values = self.network(state_batch).gather(1, action_batch.type(torch.int64))
 
             #next_state_values = torch.zeros(self.h_params['learning_agent']['batch_size'], device=self.device)
             next_state_values = torch.zeros(self.batch_size, device=self.device)
+            #test = torch.zeros(self.batch_size, device=self.device)
+            #test[non_final_mask] = self.network(non_final_next_states).max(1)[0].detach()
             next_state_values[non_final_mask] = self.target_network(non_final_next_states).max(1)[0].detach()
 
             expected_state_action_values = torch.add(

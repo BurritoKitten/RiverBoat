@@ -202,7 +202,7 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
         self.crash_reward = crash_reward
         self.success_reward = success_reward
         self.heading_old = None
-        self.heading_reward = 0.025
+        self.heading_reward = 0.075
 
     def get_reward(self, t, mover_dict):
         """
@@ -222,7 +222,7 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
                 delta_range = self.old_dst - mover.state_dict['dest_dist']
                 if delta_range >= 0:
                     # positive reward if boat got closer to the goal
-                    reward += delta_range/(10.0*self.delta_t)
+                    reward += delta_range/(1.0*self.delta_t)
 
                 self.old_dst = mover.state_dict['dest_dist']
 
@@ -232,12 +232,14 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
                     reward += self.success_reward
 
                 # Check if heading is point boat more towards
-                if np.abs(mover.state_dict['mu']) < np.abs(self.heading_old) or np.abs(mover.state_dict['mu']) <= np.deg2rad(5.0):
+                if np.abs(mover.state_dict['mu']) < np.abs(self.heading_old):
                     reward += (np.pi - abs(mover.state_dict['mu'])) * (np.pi - abs(mover.state_dict['mu'])) * self.heading_reward
-                else:
-                    # penalty for turning away from the destination
-                    reward -= (np.pi - abs(mover.state_dict['mu'])) * (
-                                np.pi - abs(mover.state_dict['mu'])) * self.heading_reward
+                if np.abs(mover.state_dict['mu']) <= np.deg2rad(5.0):
+                    reward += 1.0
+                #else:
+                #    # penalty for turning away from the destination
+                #    reward -= (np.pi - abs(mover.state_dict['mu'])) * (
+                #                np.pi - abs(mover.state_dict['mu'])) * self.heading_reward
                 self.heading_old = mover.state_dict['mu']
 
                 # check if crashed
@@ -261,7 +263,7 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
 
         # if the boat is over 300 meters away from the goal, end the simulation. It is assumed that if the boat goes
         # too far it will not return and this saves computation
-        if self.old_dst >= 300.0:
+        if self.old_dst >= 200.0:
             self.is_terminal = True
 
         return reward

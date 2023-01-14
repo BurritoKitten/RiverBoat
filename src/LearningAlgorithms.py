@@ -68,11 +68,23 @@ class Network(nn.Module):
         # prepare dropout layers
         self.drop = nn.Dropout(h_params['learning_algorithm']['drop_out'])
         '''
-        self.fc1 = nn.Linear(state_size, 100, device=device)
-        self.fc2 = nn.Linear(100,100, device=device)
-        self.out = nn.Linear(100, action_size, device=device)
-        self.relu = torch.nn.ReLU()
-        #self.drop = nn.Dropout(h_params['learning_agent']['drop_out'])
+        self.fc1 = nn.Linear(state_size, int(layer_numbers[0]), device=device)
+        self.fc2 = nn.Linear(int(layer_numbers[0]),int(layer_numbers[1]), device=device)
+        self.out = nn.Linear(int(layer_numbers[1]), action_size, device=device)
+        # interim activation
+        hidden_active = h_params['learning_algorithm']['activation']
+        if hidden_active == 'leaky_relu':
+            self.active = torch.nn.LeakyReLU()
+        elif hidden_active == 'linear':
+            self.active = torch.nn.Linear(device=device)
+        elif hidden_active == 'relu':
+            self.active = torch.nn.ReLU()
+        elif hidden_active == 'tan_h':
+            self.active == torch.nn.Tanh()
+        else:
+            raise ValueError('Activation function not currently supported')
+
+        self.drop = nn.Dropout(h_params['learning_algorithm']['drop_out'])
 
     def forward(self, z):
         """
@@ -96,10 +108,10 @@ class Network(nn.Module):
         """
 
         x = self.fc1(z)
-        x = self.relu(x)
+        x = self.active(x)
         x = self.fc2(x)
-        #x = self.drop(x)
-        x = self.relu(x)
+        x = self.drop(x)
+        x = self.active(x)
         x = self.out(x)
 
         return x
@@ -225,16 +237,9 @@ class DQN(LearningAlgorithms):
             reward_batch = torch.cat(batch.reward)
 
             # use the policy network
-            #state_action_values = self.network(state_batch).gather(1, action_batch.type(torch.int64))
-            #tmp_out = self.network(state_batch)
-            #tmp_2 = self.network(state_batch).gather(1, action_batch.type(torch.int64))
-            #state_action_values = torch.gather(tmp_out,1,action_batch.type(torch.int64))
             state_action_values = self.network(state_batch).gather(1, action_batch.type(torch.int64))
 
-            #next_state_values = torch.zeros(self.h_params['learning_agent']['batch_size'], device=self.device)
             next_state_values = torch.zeros(self.batch_size, device=self.device)
-            #test = torch.zeros(self.batch_size, device=self.device)
-            #test[non_final_mask] = self.network(non_final_next_states).max(1)[0].detach()
             next_state_values[non_final_mask] = self.target_network(non_final_next_states).max(1)[0].detach()
 
             expected_state_action_values = torch.add(

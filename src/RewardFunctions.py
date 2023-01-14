@@ -44,7 +44,7 @@ def select_reward_function(h_params, ao):
 
     elif reward_info['name'] == 'MultiStepCrashSuccessReward':
 
-        refresh_rate = reward_info['agent_step_size']
+        refresh_rate = ao.replan_rate
         crash_reward = reward_info['crash']
         success_reward = reward_info['success']
         goal_dst = reward_info['goal_dst']
@@ -263,7 +263,7 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
 
         # if the boat is over 300 meters away from the goal, end the simulation. It is assumed that if the boat goes
         # too far it will not return and this saves computation
-        if self.old_dst >= 200.0:
+        if self.old_dst >= 300.0:
             self.is_terminal = True
 
         return reward

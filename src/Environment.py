@@ -125,6 +125,9 @@ class Environment(ABC):
         # reset reward function information
         self.reward_func.reset(self.mover_dict)
 
+        # reset the action operation
+        self.ao.reset()
+
     #@abstractmethod
     def reset_baseline_environment(self):
         pass
@@ -670,7 +673,8 @@ class Environment(ABC):
                                                 controller=controller,
                                                 angle_adj_lst=self.h_params['action_description']['angle_values'],
                                                 power_change_lst=self.h_params['action_description']['power_values'],
-                                                epsilon_schedule=self.h_params['action_description']['eps_schedule'])
+                                                epsilon_schedule=self.h_params['action_description']['eps_schedule'],
+                                                segment_length=self.h_params['action_description']['segment_length'])
 
         elif action_type == 'discrete' and action_designation == 'direct':
             # agent is directly controlling the actuators with discrete choices

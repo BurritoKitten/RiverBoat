@@ -100,6 +100,13 @@ class ActionOperation(ABC):
         """
         pass
 
+    @abstractmethod
+    def reset(self):
+        """
+        a rest function called between episodes, so that information that persists during a
+        :return:
+        """
+
 class DirectControlActionDiscrete(ActionOperation):
 
     def __init__(self, name, prop_change_angle_lst, power_change_lst=None, epsilon_schedule=None):
@@ -450,6 +457,15 @@ class PathActionOperation(ActionOperation):
             action_meta_data += ';'
         return action_meta_data
 
+    def reset(self):
+        """
+        reset both the path to empty and the last time that is replanned to 0.0. This prepares the action operation for
+        the next operation.
+        :return:
+        """
+        self.path = None
+        self.last_replan = 0.0
+
 class PathContinousCp(PathActionOperation):
 
     def __init__(self, name, replan_rate,controller, angle_range, power_range=None, num_control_point=4):
@@ -640,7 +656,6 @@ class PathDiscreteCp(PathActionOperation):
                     break
             if np.random.random() <= eps_threshold:
                 # choose random action
-                # TODO check if this is actually giving random numbers
                 action_code = np.random.randint(0, high=len(raw_actions[0]))
             else:
                 # choose value with maximal q value
@@ -674,6 +689,7 @@ class PathDiscreteCp(PathActionOperation):
             self.control_points = cp
 
             self.action_code_all = action_code
+            self.last_replan = time
         else:
             end_step = False
             action_code = self.action_code_all

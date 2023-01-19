@@ -37,7 +37,7 @@ def graph_episode(k, df, trial_group, trial_number, file_name):
 
 
     # graph trajectory
-    circle = patches.Circle((df['destination_x'].iloc[0], df['destination_y'].iloc[0]), radius=2.0, alpha=1.0,
+    circle = patches.Circle((df['destination_x'].iloc[0], df['destination_y'].iloc[0]), radius=5.0, alpha=0.3,
                             color='tab:green')
     ax1.add_patch(circle)
 
@@ -112,9 +112,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingDirectControl'
-    trial_number = 8
-    episodes = range(500)
+    trial_group = 'DebuggingPath'
+    trial_number = 1
+    episodes = range(9900,10000)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

@@ -685,7 +685,7 @@ class PathDiscreteCp(PathActionOperation):
                 cp_angle.append(new_angle)
 
             cp = np.reshape(cp,(len(cp),2))
-            self.build_path(cp,20) # builds the path with 10 total points
+            self.build_path(cp,10) # builds the path with 10 total points
             self.control_points = cp
 
             self.action_code_all = action_code

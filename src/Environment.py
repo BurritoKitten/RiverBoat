@@ -205,6 +205,7 @@ class Environment(ABC):
             if end_step or is_terminal:
                 # add data to memory because the agents step has completed.
                 next_state = interim_next_state
+                reward = interim_reward
 
                 # convert the tuple to tensors
                 #tmp = list(state.values())

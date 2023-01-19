@@ -119,6 +119,38 @@ class AnimateEpisode:
             ax2.clear()
             ax3.clear()
 
+            # draw path if applicable
+            try:
+                # draw the path
+                cp = self.df['action_meta_data'].iloc[self.c]
+                cp = cp.split(';')
+
+                for i, tmp_cp in enumerate(cp):
+                    if tmp_cp != '':
+                        cp[i] = tmp_cp.split('_')
+                        cp[i] = [float(item) for item in cp[i]]
+                    else:
+                        cp.pop(i)
+
+                cp = np.reshape(cp, (len(cp), 2))
+                path = bezier_curve(cp, 20)
+                tolerance = generate_buffer_verts(path, buffer=5.0)
+                path_tolerance = Polygon(tolerance, True)
+                patches = []
+                patches.append(path_tolerance)
+
+                # path control points
+                ax1.scatter(cp[:, 0], cp[:, 1], color='tab:olive')
+
+                # mean path
+                ax1.plot(path[:, 0], path[:, 1], '--', color='tab:olive', label='Path')
+
+                p = PatchCollection(patches, alpha=0.2)
+                p.set_color('tab:olive')
+                ax1.add_collection(p)
+            except:
+                pass
+
 
             # plot the boats current position
             # boats x,y location [m]
@@ -166,37 +198,7 @@ class AnimateEpisode:
             ax1.plot([prop_end_x_new, prop_end_x_new + base_vec[0]], [prop_end_y_new, prop_end_y_new + base_vec[1]],
                     color='tab:blue')
 
-            # draw path if applicable
-            try:
-                # draw the path
-                cp = self.df['action_meta_data'].iloc[self.c]
-                cp = cp.split(';')
 
-                for i, tmp_cp in enumerate(cp):
-                    if tmp_cp != '':
-                        cp[i] = tmp_cp.split('_')
-                        cp[i] = [float(item) for item in cp[i]]
-                    else:
-                        cp.pop(i)
-
-                cp = np.reshape(cp,(len(cp),2))
-                path = bezier_curve(cp, 20)
-                tolerance = generate_buffer_verts(path,buffer=5.0)
-                path_tolerance = Polygon(tolerance, True)
-                patches = []
-                patches.append(path_tolerance)
-
-                # path control points
-                ax1.scatter(cp[:,0],cp[:,1],color='tab:olive')
-
-                # mean path
-                ax1.plot(path[:,0],path[:,1],'--',color='tab:olive',label='Path')
-
-                p = PatchCollection(patches, alpha=0.2)
-                p.set_color('tab:olive')
-                ax1.add_collection(p)
-            except:
-                pass
 
 
             # draw the destination
@@ -261,9 +263,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingDirectControl'
-    trial_number = 8
-    episodes = range(484,500)
+    trial_group = 'DebuggingPath'
+    trial_number = 1
+    episodes = range(9990,10000)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

@@ -364,14 +364,14 @@ class MultiStepCrashSuccessReward(MultiStepReward):
 
         # check if the agent step has fully taken place
         reward = 0.0
-        if (t-self.last_reward_time) >= self.refresh_rate:
+        if (t-self.last_reward_time) >= self.refresh_rate or self.is_terminal:
 
             # reset step tracking information
             self.last_reward_time = t
             reward = self.cumulative_reward
             self.cumulative_reward = 0.0
 
-        return reward
+        return reward/100.0
 
     def reset(self, mover_dict):
         """
@@ -384,8 +384,11 @@ class MultiStepCrashSuccessReward(MultiStepReward):
             if mover.can_learn:
                 # updates sensors
                 self.old_dst = mover.state_dict['dest_dist']
+                self.heading_old = mover.state_dict['mu']
 
         # reset the flags for tracking states
         self.is_crashed = False
         self.is_success = False
         self.is_terminal = False
+        self.last_reward_time = 0.0
+        self.cumulative_reward = 0.0

@@ -80,6 +80,11 @@ class Environment(ABC):
                 mover.state_dict['v_yp'] = np.random.random()-0.5
                 mover.state_dict['psi_dot'] = 0.0 #(np.random.random()-0.5)/10.0
 
+                mover.state_dict['v_x'] = mover.state_dict['v_xp'] * np.cos(-mover.state_dict['psi']) + mover.state_dict[
+                    'v_yp'] * np.sin(-mover.state_dict['psi'])
+                mover.state_dict['v_y'] = -mover.state_dict['v_xp'] * np.sin(-mover.state_dict['psi']) + mover.state_dict[
+                    'v_yp'] * np.cos(-mover.state_dict['psi'])
+
                 # power setting needs to be set from action designation.
                 if reset_to_max_power:
                     tmp_power = mover.state_dict['power_max']

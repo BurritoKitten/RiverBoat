@@ -586,7 +586,7 @@ class PathDiscreteCp(PathActionOperation):
         # enumerate combinations for angle selections
         if power_change_lst == 'None':
             # subtract 1 from the number of points because the boat's location is used as the first cp
-            self.action_enumerations = list(itertools.product(self.angle_adj_lst, repeat=self.num_control_point-1))
+            self.action_enumerations = list(itertools.product(self.angle_adj_lst, repeat=self.num_control_point-2))
         else:
             raise ValueError('Enumeration of power and angle not implemented yet')
 
@@ -663,10 +663,29 @@ class PathDiscreteCp(PathActionOperation):
 
             # get the list of chosen relative angles
             angle_lst = self.action_enumerations[action_code]
-
-            # convert the angle list into concrete control points
             cp = [np.array([state['x_pos'], state['y_pos']])]
             cp_angle = [state['psi']]
+            boat_vel_angle = np.arctan2(state['v_y'],state['v_x'])
+            dx = self.segment_length * np.cos(boat_vel_angle)
+            dy = self.segment_length * np.sin(boat_vel_angle)
+
+            rot_mat = [[np.cos(np.deg2rad(angle_lst[0])), -np.sin(np.deg2rad(angle_lst[0]))],
+                       [np.sin(np.deg2rad(angle_lst[0])), np.cos(np.deg2rad(angle_lst[0]))]]
+            rot_mat = np.reshape(rot_mat, (2, 2))
+
+            delta = np.reshape([dx, dy], (2, 1))
+            cp_new = np.reshape(np.add(np.matmul(rot_mat, delta), np.reshape(cp[0], (2, 1))), (2,))
+
+            cp.append(cp_new)
+            new_angle = np.arctan2(cp_new[1] - cp[0][1], cp_new[0] - cp[0][0])
+            if new_angle < 0:
+                new_angle += 2.0 * np.pi
+            cp_angle.append(new_angle)
+
+
+            # convert the angle list into concrete control points
+            #cp = [np.array([state['x_pos'], state['y_pos']])]
+            #cp_angle = [state['psi']]
             for i in range(len(angle_lst)):
                 dx = self.segment_length*np.cos(cp_angle[i])
                 dy = self.segment_length*np.sin(cp_angle[i])

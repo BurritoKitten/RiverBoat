@@ -167,7 +167,7 @@ class InstantStepCrashSuccessReward(RewardFunction):
         if self.old_dst >= 200.0:
             self.is_terminal = True
 
-        return reward
+        return reward/100.0
 
     def reset(self, mover_dict):
         """

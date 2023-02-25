@@ -237,10 +237,17 @@ class DirectControlActionDiscrete(ActionOperation):
 
         return False
 
+    def reset(self):
+        """
+        not currently needed for this action operation
+        :return:
+        """
+        pass
+
 
 class DirectControlActionContinous(ActionOperation):
 
-    def __init__(self, name, max_propeller, max_power):
+    def __init__(self, name, max_propeller, max_power, epsilon_schedule=None):
         """
         is a class that converts a neural networks outputs to a change in a boats propeller angle and power value
 
@@ -250,13 +257,24 @@ class DirectControlActionContinous(ActionOperation):
         """
         super().__init__(name)
 
-        self.max_propeller = max_propeller
+        self.max_propeller = float(max_propeller)
         if max_power == 'None':
             self.max_power = None
+            self.action_size = self.get_action_size()
         else:
-            self.max_power = max_power
+            self.max_power = float(max_power)
+            self.action_size = self.get_action_size()
 
-    def action_to_command(self, ep_num, time, state, input):
+        # parse the epsilon greedy schedule
+        self.epsilon_schedule = []
+        tuples = epsilon_schedule.split(';')
+        for tup in tuples:
+            tmp_tup = tup.split(",")
+            tmp_tup[0] = int(tmp_tup[0])
+            tmp_tup[1] = float(tmp_tup[1])
+            self.epsilon_schedule.append(tmp_tup)
+
+    def action_to_command(self, ep_num, time, state, raw_actions):
         """
         converts the outputs of a neural network to a propeller and power change amount. This is assumed a continues
         value. The input should be bounded from -1 to 1. The conversion does not have to be linear but currently
@@ -264,21 +282,61 @@ class DirectControlActionContinous(ActionOperation):
 
         :param time: the time stamp of the simulation
         :param state: the current state of the boat
-        :param input: the output of the neural networks. This is a two element vector having the normalized propeller
+        :param raw_actions: the output of the neural networks. This is a two element vector having the normalized propeller
             change command and then the normalized power change command, or a one element vector with the normalized
             propeller change
         :return: the propeller change [rad] and the power change [watt]
         """
 
-        propeller = input[0]
-        propeller_change = propeller * self.max_propeller
+        eps_threshold = 0.0
+        for i, esp in enumerate(self.epsilon_schedule):
+            if ep_num >= esp[0]:
+                # the ith and ith+1 entries define the linear segment of the epsilon cooling schedule
+                x1 = esp[0]
+                y1 = esp[1]
+                x2 = self.epsilon_schedule[i + 1][0]
+                y2 = self.epsilon_schedule[i + 1][1]
 
-        power_change = 0.0
-        if len(input == 2):
-            power = input[1]
-            power_change = power * self.max_power
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y1 - x1 * slope
 
-        return propeller_change, power_change, propeller, True
+                eps_threshold = float(ep_num) * slope + intercept
+                break
+
+        action_tensor = raw_actions
+        action_np = action_tensor.cpu().data.numpy().flatten()
+
+        sample = np.random.random()
+        if sample < eps_threshold:
+            # add noise to the action
+            #sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
+            sigma = self.max_propeller/ 1.645
+            #sigma = np.reshape(sigma, len(sigma[0]))
+            base_random = action_np + np.random.normal(0, sigma, size=self.action_size)
+            # base_random = action_tensor + sigma*torch.randn(self.action_size).cuda()
+            # action = base_random.clip(-self.actor_policy_net.max_action.cpu().detach().numpy(), self.actor_policy_net.max_action.cpu().detach().numpy())
+            action = np.clip(base_random, -self.max_propeller,self.max_propeller)
+            # TODO this action clip only works for no power changes
+
+            # noise = self.ou_noise(bg_noise,dt=0.25, dim=self.action_size)
+            # action = np.clip(action.cpu().detach().numpy() + noise, -self.actor_policy_net.max_action.cpu().detach().numpy(), self.actor_policy_net.max_action.cpu().detach().numpy())
+
+            #action_tensor = torch.from_numpy(action).cuda().to(torch.float32)
+
+            power_change = 0.0
+            propeller_change = action[0]
+            action_code = 0  # only one action code for continuos actinos
+        else:
+            power_change = 0.0
+            propeller_change = action_np[0]
+            action_code = 0  # only one action code for continuos actinos
+
+        # propeller angle change [rad]
+        # power change [watt]
+        # index of network output
+        # meta data. Only used for path action types
+        # end step. For direct control every step is an ending step
+        return propeller_change, power_change, action_code, None, True
 
     def get_action_size(self):
         """
@@ -320,6 +378,13 @@ class DirectControlActionContinous(ActionOperation):
             return True
 
         return False
+
+    def reset(self):
+        """
+        not currently needed for this action operation
+        :return:
+        """
+        pass
 
 
 class PathActionOperation(ActionOperation):
@@ -465,6 +530,7 @@ class PathActionOperation(ActionOperation):
         """
         self.path = None
         self.last_replan = 0.0
+
 
 class PathContinousCp(PathActionOperation):
 
@@ -669,12 +735,8 @@ class PathDiscreteCp(PathActionOperation):
             dx = self.segment_length * np.cos(boat_vel_angle)
             dy = self.segment_length * np.sin(boat_vel_angle)
 
-            rot_mat = [[np.cos(np.deg2rad(angle_lst[0])), -np.sin(np.deg2rad(angle_lst[0]))],
-                       [np.sin(np.deg2rad(angle_lst[0])), np.cos(np.deg2rad(angle_lst[0]))]]
-            rot_mat = np.reshape(rot_mat, (2, 2))
-
             delta = np.reshape([dx, dy], (2, 1))
-            cp_new = np.reshape(np.add(np.matmul(rot_mat, delta), np.reshape(cp[0], (2, 1))), (2,))
+            cp_new = np.reshape(np.add(delta, np.reshape(cp[0], (2, 1))), (2,))
 
             cp.append(cp_new)
             new_angle = np.arctan2(cp_new[1] - cp[0][1], cp_new[0] - cp[0][0])
@@ -687,18 +749,18 @@ class PathDiscreteCp(PathActionOperation):
             #cp = [np.array([state['x_pos'], state['y_pos']])]
             #cp_angle = [state['psi']]
             for i in range(len(angle_lst)):
-                dx = self.segment_length*np.cos(cp_angle[i])
-                dy = self.segment_length*np.sin(cp_angle[i])
+                dx = self.segment_length*np.cos(cp_angle[len(cp_angle)-1])
+                dy = self.segment_length*np.sin(cp_angle[len(cp_angle)-1])
 
                 rot_mat = [[np.cos(np.deg2rad(angle_lst[i])), -np.sin(np.deg2rad(angle_lst[i]))],
                            [np.sin(np.deg2rad(angle_lst[i])), np.cos(np.deg2rad(angle_lst[i]))]]
                 rot_mat = np.reshape(rot_mat,(2,2))
 
                 delta = np.reshape([dx,dy],(2,1))
-                cp_new = np.reshape(np.add(np.matmul(rot_mat,delta),np.reshape(cp[i],(2,1))),(2,))
+                cp_new = np.reshape(np.add(np.matmul(rot_mat,delta),np.reshape(cp[len(cp_angle)-1],(2,1))),(2,))
 
                 cp.append(cp_new)
-                new_angle = np.arctan2(cp_new[1]-cp[i][1],cp_new[0]-cp[i][0])
+                new_angle = np.arctan2(cp_new[1]-cp[len(cp_angle)-1][1],cp_new[0]-cp[len(cp_angle)-1][0])
                 if new_angle < 0:
                     new_angle += 2.0*np.pi
                 cp_angle.append(new_angle)

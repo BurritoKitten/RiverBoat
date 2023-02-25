@@ -386,7 +386,7 @@ class Environment(ABC):
                 # updates sensors
                 dest_dst = mover.state_dict['dest_dist']
 
-        return state, action, action_meta_data, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
+        return state, propeller_angle_change, action_meta_data, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
 
     def launch_training(self):
         """
@@ -492,9 +492,8 @@ class Environment(ABC):
                 self.agent.update_target_network()
 
                 # save the networks
-                torch.save(self.agent.network.state_dict(),
-                           "Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
-                               self.h_params['scenario']['trial_num'])+"/Models/"+str(elapsed_episodes)+'.pymdl')
+                self.agent.save_networks(elapsed_episodes,"Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
+                               self.h_params['scenario']['trial_num'])+"/Models/")
 
             elapsed_episodes += 1
 
@@ -661,10 +660,11 @@ class Environment(ABC):
         elif action_type == 'continous' and action_designation == 'direct':
             # agent is directly controlling the actuators with discrete choices
             ao = ActionOperation.DirectControlActionContinous(name='discrete_direct',
-                                                             max_propeller=self.h_params['action_description'][
-                                                                 'max_propeller'],
+                                                             max_propeller=self.h_params['learning_algorithm'][
+                                                                 'max_action'],
                                                              max_power=self.h_params['action_description'][
-                                                                 'max_power'])
+                                                                 'max_power'],
+                                                              epsilon_schedule=self.h_params['action_description']['eps_schedule'])
         elif action_type == 'discrete' and action_designation == 'canned':
             # used discrete canned paths
             ao = ActionOperation.PathDiscreteCanned(name='canned_cp',replan_rate=self.h_params['action_description']['replan_rate'],
@@ -759,7 +759,7 @@ class Environment(ABC):
         if settings['name'] == 'DQN':
             la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size,n_batches, batch_size, device, optimizer_settings)
         elif settings['name'] == 'DDPG':
-            la = None
+            la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings)
         else:
             raise ValueError('Learning algorithm currently not supported')
 

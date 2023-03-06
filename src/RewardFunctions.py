@@ -42,6 +42,14 @@ def select_reward_function(h_params, ao):
 
         reward_func = InstantStepHeadingCrashSuccessReward(delta_t, crash_reward, success_reward, goal_dst)
 
+    elif reward_info['name'] == 'MultiStepSuccessReward':
+
+        refresh_rate = ao.replan_rate
+        success_reward = reward_info['success']
+        goal_dst = reward_info['goal_dst']
+
+        reward_func = MultiStepSuccessReward(refresh_rate, success_reward, goal_dst)
+
     elif reward_info['name'] == 'MultiStepCrashSuccessReward':
 
         refresh_rate = ao.replan_rate
@@ -385,6 +393,67 @@ class MultiStepCrashSuccessReward(MultiStepReward):
                 # updates sensors
                 self.old_dst = mover.state_dict['dest_dist']
                 self.heading_old = mover.state_dict['mu']
+
+        # reset the flags for tracking states
+        self.is_crashed = False
+        self.is_success = False
+        self.is_terminal = False
+        self.last_reward_time = 0.0
+        self.cumulative_reward = 0.0
+
+
+class MultiStepSuccessReward(MultiStepReward):
+
+    def __init__(self, refresh_rate, success_reward, goal_dst):
+        """
+        A simple reward function that gets reward for succeeding and crashing. The only other reward is if the boat
+        closes the distance to the destination
+
+        :param crash_reward: the reward for crashing the boat
+        :param refresh_rate: the rate at which a new agent action is choosen at
+        :param success_reward: the reward for reaching a success state
+        :param goal_dst: the distance where a boat is considered to have reached its goal
+        """
+        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
+
+        self.success_reward = success_reward
+
+    def get_reward(self, t, mover_dict):
+        """
+        calculate the reward for the current step. Also set if the simulation is completed.
+        :param t: time
+        :param mover_dict: dictionary containing all of the mover information
+        :return:
+        """
+        self.is_crashed = False
+        self.is_success = False
+
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # this is the river boat
+
+                if mover.state_dict['dest_dist'] < self.goal_dist:
+                    self.is_terminal = True
+                    self.is_success = True
+                    self.cumulative_reward += self.success_reward
+
+        # check if the agent step has fully taken place
+        reward = 0.0
+        if (t-self.last_reward_time) >= self.refresh_rate or self.is_terminal:
+
+            # reset step tracking information
+            self.last_reward_time = t
+            reward = self.cumulative_reward
+            self.cumulative_reward = 0.0
+
+        return reward
+
+    def reset(self, mover_dict):
+        """
+        Reset the old distance so the reward function can determine if the step reduced the distance to the goal.
+        :param mover_dict:
+        :return:
+        """
 
         # reset the flags for tracking states
         self.is_crashed = False

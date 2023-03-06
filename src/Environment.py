@@ -193,7 +193,21 @@ class Environment(ABC):
         while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            interim_state, interim_action, interim_action_meta_data, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
+            interim_state, interim_org_action, interim_used_action, interim_path_cps, interim_critic_vals, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
+
+            # the non-dimensional values of the state
+            # org_action - action before exmplation is added
+            # used_action - action where exploration may or may not be used. THis is the action used for the MDP
+            # path_cps - a list of path control points that define the naviation path. This is none for direct contol methods
+            # critic values - q values or the critics outpput values
+            # reward - given rewared during the simualtion step
+            # next_state - non-dimensional state after the movers moved
+            # end_step - if teh agents step completed or not. Should always be true for direct control and periodically true for path control
+            # is_terminal - if the simulation is done
+            # is_crashed - boolean if the boat crashed into an obstacle
+            # is_success - of the simulation ended reaching its goal
+            # dest_dst - distance to the destination after stepping
+            #return state, org_action, used_action, path_cps, critic_values, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
 
             # check if the distance is closer than any previous distances. If so save the distance
             if curr_dist < min_dst:
@@ -202,8 +216,10 @@ class Environment(ABC):
             # if the state is empty update it to the interim state
             if reset_state:
                 state = interim_state
-                action = interim_action
-                action_meta_data = interim_action_meta_data
+                org_action = interim_org_action
+                action = interim_used_action
+                path_cps = interim_path_cps
+                critic_vals = interim_critic_vals
                 reward = interim_reward
                 reset_state = False
 
@@ -213,11 +229,13 @@ class Environment(ABC):
                 reward = interim_reward
 
                 # convert the tuple to tensors
-                #tmp = list(state.values())
                 state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device,list(state.values()))
                 next_state_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, list(next_state.values()))
-                #action_tensor = torch.tensor([action]).to(self.device)
-                action_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [action])
+
+                if type(action) == list:
+                    action_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, action)
+                else:
+                    action_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [action])
                 #reward_tensor = torch.tensor([reward]).to(self.device)
                 reward_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [reward])
                 #is_terminal_tensor = torch.tensor([is_terminal]).to(self.device)
@@ -236,10 +254,18 @@ class Environment(ABC):
                 mover.add_step_history(step_num)
 
             # add simulation specific history
-            action = interim_action
+            org_action = interim_org_action
+            action = interim_used_action
+            path_cps = interim_path_cps
+            critic_vals = interim_critic_vals
 
-            action_meta_data = interim_action_meta_data
-            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success, self.destination[0], self.destination[1]],[action],[action_meta_data]))
+            if type(org_action) != list and not isinstance(org_action,np.ndarray):
+                org_action = [org_action]
+            if type(action) != list and not isinstance(org_action,np.ndarray):
+                action = [action]
+
+            telemetry = np.concatenate(([t, reward, is_terminal, is_crashed, is_success,
+                                         self.destination[0], self.destination[1]],org_action,action,path_cps,critic_vals))
             self.history.iloc[step_num] = telemetry
 
             # add simulation specific data from the learner. destination distance
@@ -329,10 +355,22 @@ class Environment(ABC):
 
                 # get the action and network outputs from the network
                 inp = list(non_dimensional_values.values())
-                raw_ouputs = self.agent.get_output(inp)
+
+                # raw_outputs - q values or actor values
+                # critic values - either the q values or the critics values
+                raw_ouputs, critic_values = self.agent.get_output(inp)
+                critic_values = critic_values.cpu().detach().numpy()[0]
 
                 # convert the action to a command change
-                propeller_angle_change, power_change, action, action_meta_data, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
+                #propeller_angle_change, power_change, action, action_meta_data, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
+
+                # propeller_angle_change - the amount to change the propeller angle relative to current position [rad]
+                # power_change - the amount of power to change being deliverd to the propeller [watt]
+                # org_action - the original action produced without exploration being added
+                # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
+                # path_cps - if a path is used, this is a list of control points that define the path. Else it is false
+                # end_step - if this is the end of an agent step
+                propeller_angle_change, power_change, org_action, used_action, path_cps, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
 
                 # apply the actuator changes to the mover
                 power = power_change + mover.state_dict['power']
@@ -386,7 +424,19 @@ class Environment(ABC):
                 # updates sensors
                 dest_dst = mover.state_dict['dest_dist']
 
-        return state, propeller_angle_change, action_meta_data, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
+        # the non-dimensional values of the state
+        # org_action - action before exmplation is added
+        # used_action - action where exploration may or may not be used. THis is the action used for the MDP
+        # path_cps - a list of path control points that define the naviation path. This is none for direct contol methods
+        # critic values - q values or the critics outpput values
+        # reward - given rewared during the simualtion step
+        # next_state - non-dimensional state after the movers moved
+        # end_step - if teh agents step completed or not. Should always be true for direct control and periodically true for path control
+        # is_terminal - if the simulation is done
+        # is_crashed - boolean if the boat crashed into an obstacle
+        # is_success - of the simulation ended reaching its goal
+        # dest_dst - distance to the destination after stepping
+        return state, org_action, used_action, path_cps, critic_values, reward, next_state, end_step, is_terminal, self.reward_func.is_crashed, self.reward_func.is_success, dest_dst
 
     def launch_training(self):
         """
@@ -433,7 +483,12 @@ class Environment(ABC):
         controller = self.get_controller()
 
         # get the action determination
-        action_size, self.ao, reset_to_max_power = self.get_action_size_and_operation(controller)
+        # this is an ugly hack. TODO come up with a more clean method. May need to change where the history header is defined
+        if self.h_params['learning_algorithm']['name'] == 'DQN':
+            n_critic_outputs = None
+        else:
+            n_critic_outputs = 1
+        action_size, self.ao, reset_to_max_power = self.get_action_size_and_operation(controller, n_critic_outputs)
 
         # get the state size
         state_size = self.get_state_size()
@@ -633,7 +688,7 @@ class Environment(ABC):
 
         return controller
 
-    def get_action_size_and_operation(self, controller):
+    def get_action_size_and_operation(self, controller, n_critic_outputs):
         """
         from the input file, get the action formulation specified by the user. The action specification dictates how
         an action is split. For example, are control points used to build a path, are a set of canned paths used, or
@@ -643,6 +698,7 @@ class Environment(ABC):
 
         :param controller: the controller used by the boat. This can be None if the neural network is directly
             controlling the actuators.
+        :param n_critic_outputs: the number of output values from the critic network
         :return: the number of actions a neural network needs to predict, and the action operation object that converts
             neural network outputs to actuator control changes.
         """
@@ -652,11 +708,16 @@ class Environment(ABC):
 
         if action_type == 'continous' and action_designation == 'control_point':
             # use continously defined control points to define a b-spline path
+
+            #  name, replan_rate,controller, angle_range, power_range=None, num_control_point=4, epsilon_schedule=None, segment_length=10
             ao = ActionOperation.PathContinousCp(name='discrete_cp',
                                                 replan_rate=self.h_params['action_description']['replan_rate'],
                                                 controller=controller,
                                                 angle_range=self.h_params['action_description']['angle_range'],
-                                                power_range=self.h_params['action_description']['power_range'])
+                                                power_range=self.h_params['action_description']['power_range'],
+                                                 num_control_point=2,
+                                                 epsilon_schedule=self.h_params['action_description']['eps_schedule'],
+                                                 segment_length=self.h_params['action_description']['segment_length'])
         elif action_type == 'continous' and action_designation == 'direct':
             # agent is directly controlling the actuators with discrete choices
             ao = ActionOperation.DirectControlActionContinous(name='discrete_direct',
@@ -698,11 +759,28 @@ class Environment(ABC):
         reset_to_max_power = ao.reset_to_max_power()
 
         # add columns to the history header for the simulation
-        for i in range(selection_size):
-            self.header.append('a'+str(i))
 
-        # add column for action meta data
-        self.header.append('action_meta_data')
+        # add columns for raw actions
+        for i in range(selection_size):
+            self.header.append('org_a'+str(i))
+        for i in range(selection_size):
+            self.header.append('explore_a' + str(i))
+
+        # add row for path control points
+        if type(ao) == ActionOperation.PathActionOperation:
+            for i in range(ao.num_control_point):
+                self.header.append('cp_x' + str(i))
+                self.header.append('cp_y' + str(i))
+        else:
+            self.header.append("path")
+
+        # add column for critic values
+        if n_critic_outputs is None:
+            # correction for DQN
+            n_critic_outputs = action_size
+
+        for i in range(n_critic_outputs):
+            self.header.append('critic_value_'+str(i))
 
         return action_size, ao, reset_to_max_power
 
@@ -759,7 +837,8 @@ class Environment(ABC):
         if settings['name'] == 'DQN':
             la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size,n_batches, batch_size, device, optimizer_settings)
         elif settings['name'] == 'DDPG':
-            la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings)
+            max_action_val = np.abs(np.float(self.h_params['action_description']['angle_range'].split(',')[0]))
+            la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings, max_action_val)
         else:
             raise ValueError('Learning algorithm currently not supported')
 

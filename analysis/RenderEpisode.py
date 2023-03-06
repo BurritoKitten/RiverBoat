@@ -122,7 +122,7 @@ class AnimateEpisode:
             # draw path if applicable
             try:
                 # draw the path
-                cp = self.df['action_meta_data'].iloc[self.c]
+                cp = self.df['path'].iloc[self.c]
                 cp = cp.split(';')
 
                 for i, tmp_cp in enumerate(cp):
@@ -173,7 +173,7 @@ class AnimateEpisode:
             polygon = Polygon(corners, True, label='Obstacle')
             bp = [polygon]
 
-            p = PatchCollection(bp, alpha=0.2)
+            p = PatchCollection(bp, alpha=0.4)
             p.set_color('tab:blue')
             ax1.add_collection(p)
 
@@ -263,9 +263,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPath'
-    trial_number = 1
-    episodes = range(9990,10000)
+    trial_group = 'DebuggingPathDDPG'
+    trial_number = 6
+    episodes = range(206,208)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

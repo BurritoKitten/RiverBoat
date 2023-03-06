@@ -168,12 +168,16 @@ class DirectControlActionDiscrete(ActionOperation):
 
                 eps_threshold = float(ep_num)*slope + intercept
                 break
+
+        # choose value with maximal q value
+        org_action_code = raw_actions.numpy().argmax()
+
         if np.random.random() <= eps_threshold:
             # choose random action
             action_code = np.random.randint(0,len(raw_actions[0]))
         else:
-            # choose value with maximal q value
-            action_code = raw_actions.numpy().argmax()
+            action_code = org_action_code
+
 
         if self.power_change_lst is None:
             # no power change, only the propeller is changeing
@@ -196,7 +200,14 @@ class DirectControlActionDiscrete(ActionOperation):
         # index of network output
         # meta data. Only used for path action types
         # end step. For direct control every step is an ending step
-        return propeller_change, power_change, action_code, None, True
+
+        # propeller_angle_change - the amount to change the propeller angle relative to current position [deg]
+        # power_change - the amount of power to change being deliverd to the propeller [watt]
+        # org_action - the original action produced without exploration being added
+        # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
+        # path_cps - if a path is used, this is a list of control points that define the path. Else it is false
+        # end_step - if this is the end of an agent step
+        return propeller_change, power_change, org_action_code, action_code, [None], True
 
     def get_action_size(self):
         """
@@ -257,7 +268,7 @@ class DirectControlActionContinous(ActionOperation):
         """
         super().__init__(name)
 
-        self.max_propeller = float(max_propeller)
+        self.max_propeller = np.deg2rad(float(max_propeller))
         if max_power == 'None':
             self.max_power = None
             self.action_size = self.get_action_size()
@@ -325,18 +336,19 @@ class DirectControlActionContinous(ActionOperation):
 
             power_change = 0.0
             propeller_change = action[0]
-            action_code = 0  # only one action code for continuos actinos
         else:
             power_change = 0.0
             propeller_change = action_np[0]
-            action_code = 0  # only one action code for continuos actinos
+            action = action_np
 
-        # propeller angle change [rad]
-        # power change [watt]
-        # index of network output
-        # meta data. Only used for path action types
-        # end step. For direct control every step is an ending step
-        return propeller_change, power_change, action_code, None, True
+
+        # propeller_angle_change - the amount to change the propeller angle relative to current position [rad]
+        # power_change - the amount of power to change being deliverd to the propeller [watt]
+        # org_action - the original action produced without exploration being added
+        # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
+        # path_cps - if a path is used, this is a list of control points that define the path. Else it is false
+        # end_step - if this is the end of an agent step
+        return propeller_change, power_change, action_np[0], action[0], [None], True
 
     def get_action_size(self):
         """
@@ -404,7 +416,8 @@ class PathActionOperation(ActionOperation):
         self.replan_rate = replan_rate  # the rate at which to regenrate a new path
         self.error_old = []  # stores the previous steps error
         self.control_points = []  # stores the control points that are used for logging
-        self.action_code_all = None  # for keeping the old action code between steps. This is only needed for logging
+        self.used_action = None  # for keeping the old action that was used by the boat between steps. This is only needed for logging
+        self.org_action = None  # for keeping the original action that was chosen before exploration was considered. This is only needed for logging
 
     @abstractmethod
     def build_path(self, control_points, n_path_points):
@@ -534,7 +547,7 @@ class PathActionOperation(ActionOperation):
 
 class PathContinousCp(PathActionOperation):
 
-    def __init__(self, name, replan_rate,controller, angle_range, power_range=None, num_control_point=4):
+    def __init__(self, name, replan_rate,controller, angle_range, power_range=None, num_control_point=4, epsilon_schedule=None, segment_length=10):
         """
         creates paths a regular intervals by a number of control points. The control points are used to generate a
         path as a b spline. Each control point is relative from the last segments vector
@@ -551,7 +564,8 @@ class PathContinousCp(PathActionOperation):
 
         self.controller = controller  # controller object to keep the agent on the path
         angle_range = angle_range.split(',')
-        self.angle_range = [float(i) for i in angle_range]
+        self.angle_range = [np.deg2rad(float(i)) for i in angle_range]
+        #self.max_propeller = np.abs(self.angle_range[0])
 
         if power_range == 'None':
             # set power to None, so that only the propeller angle is changed.
@@ -562,6 +576,16 @@ class PathContinousCp(PathActionOperation):
             self.power_range = [float(i) for i in power_range]
 
         self.num_control_point = num_control_point  # number of control points to build the path from
+        self.segment_length = segment_length
+
+        # parse the epsilon greedy schedule
+        self.epsilon_schedule = []
+        tuples = epsilon_schedule.split(';')
+        for tup in tuples:
+            tmp_tup = tup.split(",")
+            tmp_tup[0] = int(tmp_tup[0])
+            tmp_tup[1] = float(tmp_tup[1])
+            self.epsilon_schedule.append(tmp_tup)
 
     def build_path(self, control_points, n_path_points=16):
         """
@@ -574,7 +598,7 @@ class PathContinousCp(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, ep_num, time, state, input):
+    def action_to_command(self, ep_num, time, state, raw_actions):
         """
         converts the raw output of the agent (neural network) and using the path to get the propeller angle and power
         change
@@ -584,9 +608,127 @@ class PathContinousCp(PathActionOperation):
         :param input: raw output from the agent to be inputed into the action operation
         :return:
         """
-        if (time - self.last_replan) > self.replan_rate:
-            # enough time to replanc
-            pass
+        if self.power_range is not None:
+            raise ValueError('Power changing for propeller not implemented')
+
+        if (time - self.last_replan) > self.replan_rate or self.path is None:
+            # enough time to replan
+
+            if self.path is None:
+                end_step = False  # the first step in a simulation is not a terminal agent step I think.
+            else:
+                end_step = True
+
+            # convert raw action from gpu to cpu
+            raw_actions = raw_actions.to('cpu')
+
+            # convert the code to a propeller change and a power change. Apply a random choice with epsilon greedy strategy
+            eps_threshold = 0.0
+            for i, esp in enumerate(self.epsilon_schedule):
+                if ep_num >= esp[0]:
+                    # the ith and ith+1 entries define the linear segment of the epsilon cooling schedule
+                    x1 = esp[0]
+                    y1 = esp[1]
+                    x2 = self.epsilon_schedule[i + 1][0]
+                    y2 = self.epsilon_schedule[i + 1][1]
+
+                    slope = (y2 - y1) / (x2 - x1)
+                    intercept = y1 - x1 * slope
+
+                    eps_threshold = float(ep_num) * slope + intercept
+                    break
+
+            action_tensor = raw_actions
+            action_np = action_tensor.cpu().data.numpy().flatten()
+            org_action = action_np
+
+
+            for i, tmp_angle in enumerate(action_np):
+                sample = np.random.random()
+                if sample < eps_threshold:
+                    # add noise to the action
+                    # sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
+
+                    #sigma = self.max_propeller / 1.645
+                    sigma = np.abs(self.angle_range[0])
+                    # sigma = np.reshape(sigma, len(sigma[0]))
+                    base_random = tmp_angle + np.random.normal(0, sigma, size=1)[0]
+                    # base_random = action_tensor + sigma*torch.randn(self.action_size).cuda()
+                    # action = base_random.clip(-self.actor_policy_net.max_action.cpu().detach().numpy(), self.actor_policy_net.max_action.cpu().detach().numpy())
+                    tmp_angle = np.clip(base_random, -np.abs(self.angle_range[0]), np.abs(self.angle_range[0]))
+                    action_np[i] = tmp_angle
+
+            # get the list of chosen relative angles
+            angle_lst = np.zeros(self.num_control_point) #self.action_enumerations[action_code]
+            cp = [np.array([state['x_pos'], state['y_pos']])]
+            cp_angle = [state['psi']]
+            boat_vel_angle = np.arctan2(state['v_y'], state['v_x'])
+            dx = self.segment_length * np.cos(boat_vel_angle)
+            dy = self.segment_length * np.sin(boat_vel_angle)
+
+            delta = np.reshape([dx, dy], (2, 1))
+            cp_new = np.reshape(np.add(delta, np.reshape(cp[0], (2, 1))), (2,))
+
+            cp.append(cp_new)
+            new_angle = np.arctan2(cp_new[1] - cp[0][1], cp_new[0] - cp[0][0])
+            if new_angle < 0:
+                new_angle += 2.0 * np.pi
+            cp_angle.append(new_angle)
+
+            # convert the angle list into concrete control points
+            for i in range(len(angle_lst)):
+                dx = self.segment_length * np.cos(cp_angle[len(cp_angle) - 1])
+                dy = self.segment_length * np.sin(cp_angle[len(cp_angle) - 1])
+
+                tmp_angle = action_np[i]
+
+                rot_mat = [[np.cos(tmp_angle), -np.sin(tmp_angle)],
+                           [np.sin(tmp_angle), np.cos(tmp_angle)]]
+                rot_mat = np.reshape(rot_mat, (2, 2))
+
+                delta = np.reshape([dx, dy], (2, 1))
+                cp_new = np.reshape(np.add(np.matmul(rot_mat, delta), np.reshape(cp[len(cp_angle) - 1], (2, 1))), (2,))
+
+                cp.append(cp_new)
+                new_angle = np.arctan2(cp_new[1] - cp[len(cp_angle) - 1][1], cp_new[0] - cp[len(cp_angle) - 1][0])
+                if new_angle < 0:
+                    new_angle += 2.0 * np.pi
+                cp_angle.append(new_angle)
+
+            cp = np.reshape(cp, (len(cp), 2))
+            self.build_path(cp, 10)  # builds the path with 10 total points
+            self.control_points = cp
+
+            self.org_action = org_action
+            self.used_action = cp_angle[2:4]
+            used_action = self.used_action
+            self.last_replan = time
+        else:
+            end_step = False
+            used_action = self.used_action
+            org_action = self.org_action
+
+        # get the changes to the actuators
+        power_change = 0.0
+
+        if end_step:
+            reset_error = True
+        else:
+            reset_error = False
+
+        propeller_change = self.get_propeller_change(state, self.controller, reset_error)
+
+        # get a string representation for the path control points for post analysis
+        path_cps = self.convert_cp_to_str()
+
+        # propeller_angle_change - the amount to change the propeller angle relative to current position [rad]
+        # power_change - the amount of power to change being deliverd to the propeller [watt]
+        # org_action - the original action produced without exploration being added
+        # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
+        # path_cps - if a path is used, this is a list of control points that define the path. Else it is none
+        # end_step - if this is the end of an agent step
+        #return propeller_change, power_change, cp_angle[1:3], action_meta_data, end_step
+        return propeller_change, power_change, org_action, used_action, [path_cps], end_step
 
     def get_action_size(self):
         """
@@ -640,7 +782,7 @@ class PathDiscreteCp(PathActionOperation):
         super().__init__(name, replan_rate)
         self.controller = controller
         angle_adj_lst = angle_adj_lst.split(',')
-        self.angle_adj_lst = [float(i) for i in angle_adj_lst]
+        self.angle_adj_lst = [np.deg2rad(float(i)) for i in angle_adj_lst]
         if power_change_lst == 'None':
             self.power_change_lst = None
         else:
@@ -720,15 +862,17 @@ class PathDiscreteCp(PathActionOperation):
 
                     eps_threshold = float(ep_num) * slope + intercept
                     break
+            # choose value with maximal q value
+            org_action = raw_actions.numpy().argmax()
+
             if np.random.random() <= eps_threshold:
                 # choose random action
-                action_code = np.random.randint(0, high=len(raw_actions[0]))
+                used_action = np.random.randint(0, high=len(raw_actions[0]))
             else:
-                # choose value with maximal q value
-                action_code = raw_actions.numpy().argmax()
+                used_action = org_action
 
             # get the list of chosen relative angles
-            angle_lst = self.action_enumerations[action_code]
+            angle_lst = self.action_enumerations[used_action]
             cp = [np.array([state['x_pos'], state['y_pos']])]
             cp_angle = [state['psi']]
             boat_vel_angle = np.arctan2(state['v_y'],state['v_x'])
@@ -752,8 +896,8 @@ class PathDiscreteCp(PathActionOperation):
                 dx = self.segment_length*np.cos(cp_angle[len(cp_angle)-1])
                 dy = self.segment_length*np.sin(cp_angle[len(cp_angle)-1])
 
-                rot_mat = [[np.cos(np.deg2rad(angle_lst[i])), -np.sin(np.deg2rad(angle_lst[i]))],
-                           [np.sin(np.deg2rad(angle_lst[i])), np.cos(np.deg2rad(angle_lst[i]))]]
+                rot_mat = [[np.cos(angle_lst[i]), -np.sin(angle_lst[i])],
+                           [np.sin(angle_lst[i]), np.cos(angle_lst[i])]]
                 rot_mat = np.reshape(rot_mat,(2,2))
 
                 delta = np.reshape([dx,dy],(2,1))
@@ -769,11 +913,13 @@ class PathDiscreteCp(PathActionOperation):
             self.build_path(cp,10) # builds the path with 10 total points
             self.control_points = cp
 
-            self.action_code_all = action_code
+            self.org_action = org_action
+            self.used_action = used_action
             self.last_replan = time
         else:
             end_step = False
-            action_code = self.action_code_all
+            used_action = self.used_action
+            org_action = self.org_action
 
         # get the changes to the actuators
         power_change = 0.0
@@ -785,10 +931,15 @@ class PathDiscreteCp(PathActionOperation):
 
         propeller_change = self.get_propeller_change( state, self.controller, reset_error)
 
-        # get a string representation for the path control points for post analysis
-        action_meta_data = self.convert_cp_to_str()
+        string_cp = self.convert_cp_to_str()
 
-        return propeller_change, power_change, action_code, action_meta_data, end_step
+        # propeller_angle_change - the amount to change the propeller angle relative to current position [rad]
+        # power_change - the amount of power to change being deliverd to the propeller [watt]
+        # org_action - the original action produced without exploration being added
+        # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
+        # path_cps - if a path is used, this is a list of control points that define the path. Else it is none
+        # end_step - if this is the end of an agent step
+        return propeller_change, power_change, org_action, used_action, [string_cp], end_step
 
     def get_action_size(self):
         """

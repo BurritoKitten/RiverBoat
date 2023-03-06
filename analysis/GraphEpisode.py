@@ -54,7 +54,7 @@ def graph_episode(k, df, trial_group, trial_number, file_name):
     ax1.set_ylabel('y [m]')
 
     # graph q values
-    q_val_header = [n for n in list(df.columns) if 'Network_output' in n]
+    q_val_header = [n for n in list(df.columns) if 'critic_value' in n]
     df_q_vals = df[q_val_header]
     df_q_vals['mean'] = df_q_vals.mean(axis=1)
     df_q_vals['min'] = df_q_vals.min(axis=1)
@@ -112,9 +112,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPath'
-    trial_number = 1
-    episodes = range(9900,10000)
+    trial_group = 'DebuggingDirectControlDQN'
+    trial_number = 0
+    episodes = range(0,2)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

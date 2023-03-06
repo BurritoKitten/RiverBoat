@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 
 # 3rd party packages
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -33,7 +34,12 @@ class QNetwork(nn.Module):
         self.out = nn.Linear(int(layer_numbers[1]), action_size, device=device)
 
         # interim activation
-        self.active = torch.nn.ReLU()
+        if h_params['learning_algorithm']['activation'] == 'relu':
+            self.active = torch.nn.ReLU()
+        elif h_params['learning_algorithm']['activation'] == 'leaky_relu':
+            self.active = torch.nn.LeakyReLU()
+        else:
+            raise ValueError('Not supported activation function')
 
     def forward(self, z):
         """
@@ -226,12 +232,12 @@ class DQN(LearningAlgorithms):
         if is_grad:
             out = self.network.forward(torch.Tensor(inp))
             #self.output_history.append(out.to('cpu').numpy()[0])
-            return out
+            return out, out
         else:
             with torch.no_grad():
                 out = self.network.forward(torch.Tensor(inp))
                 self.output_history.append(out.to('cpu').numpy()[0])
-                return out
+                return out, out
 
     def train_agent(self, replay_storage):
         """
@@ -301,7 +307,7 @@ class DQN(LearningAlgorithms):
 
 class DDPG(LearningAlgorithms):
 
-    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, tau, n_batches, batch_size, device, optimizer_settings):
+    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, tau, n_batches, batch_size, device, optimizer_settings, max_action_val):
         """
         The agent uses DDPG for the agent
 
@@ -319,7 +325,7 @@ class DDPG(LearningAlgorithms):
         self.tau = tau
 
         # actor network
-        max_action_val = h_params['learning_algorithm']['max_action']
+
         self.actor_policy_net = ActorNetwork(action_size, h_params, layer_numbers, state_size, device, max_action_val)
         self.actor_target_net = ActorNetwork(action_size, h_params,  layer_numbers,  state_size, device, max_action_val)
         self.actor_target_net.load_state_dict(self.actor_policy_net.state_dict())
@@ -344,23 +350,30 @@ class DDPG(LearningAlgorithms):
         :param inp: input list. Should be the observations from the simulation
         :return:
         """
-        inp_org = inp
-        inp = ReplayMemory.convert_numpy_to_tensor(self.device, inp)
+        #inp_org = inp
+        inp_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, inp)
         if is_grad:
-            #out = self.network.forward(torch.Tensor(inp))
-            #self.output_history.append(out.to('cpu').numpy()[0])
-            out = self.actor_policy_net(torch.Tensor(inp))
-            #out = torch.concat((torch.Tensor(inp), action), dim=1)
-            return out
+
+            out = self.actor_policy_net(torch.Tensor(inp_tensor))
+
+            with torch.no_grad():
+                sa = np.concatenate([inp, out.cpu().detach().numpy()[0]])
+                sa = ReplayMemory.convert_numpy_to_tensor(self.device, sa)
+                critic_values = self.critic_net(sa)
+            return out, critic_values
         else:
             with torch.no_grad():
                 #dim = inp.dim()
                 #if dim > 2:
                 #    check = 0
-                out = self.actor_policy_net(torch.Tensor(inp))
+                out = self.actor_policy_net(torch.Tensor(inp_tensor))
                 #out = torch.concat((torch.Tensor(inp), action), dim=1)
                 self.output_history.append(out.to('cpu').numpy()[0])
-                return out
+
+                sa = np.concatenate([inp,out.cpu().detach().numpy()[0]])
+                sa = ReplayMemory.convert_numpy_to_tensor(self.device, sa)
+                critic_values = self.critic_net(sa)
+                return out, critic_values
 
     def train_agent(self, replay_storage):
         """

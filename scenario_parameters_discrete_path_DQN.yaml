@@ -1,0 +1,71 @@
+action_description:
+  action_designation: control_point
+  action_type: discrete
+  angle_values: -60,-30,0,30,60
+  eps_schedule: 0,0.9;8000,0.2
+  power_values: None
+  replan_rate: 20.0
+  segment_length: 30.0
+controller:
+  coeffs: 0.1,0.5
+  type: pd
+learning_algorithm:
+  activation: leaky_relu
+  batch_size: 256
+  drop_out: 0.0
+  gamma: 0.9
+  last_activation: linear
+  layers: 32,32
+  loss: huber
+  n_batches: 32
+  name: DQN
+  target_frequency: 100
+logdata: null
+movers:
+  river_boat_0:
+    use_default: True
+    modifications:
+      fuel_capacity: 0.5
+      bsfc: 5.0e-8
+    # specify what should be in the state and how to normalize it
+    state: 
+      #delta: num, 0.758375, linear # [rad] pi/4
+      dest_dist: num, 300.0, linear # [m]
+      mu: num, 6.283185307179586, linear # [rad]
+      #power: derived, power_max, linear # [watt]
+      psi: num, 6.283185307179586, linear # [rad]
+      psi_dot: num, 6.283185307179586, linear # [rad/s]
+      v_xp: num, 5.0, linear # [m/s]
+      v_yp: num, 5.0, linear # [m/s]
+    is_agent: True
+optimizer:
+  beta_1: 0.9
+  beta_2: 0.999
+  learn_rate: 0.001
+  name: ADAM
+replay_data:
+  capacity: 10000
+  replay_strategy: all_in_one
+reward_function:
+  crash: -100.0
+  goal_dst: 5.0
+  name: MultiStepCrashSuccessReward
+  success: 100.0
+scenario:
+  baseline_frequency: 1
+  continue_learning: false
+  domain: 200
+  experiment_set: DebuggingPath
+  max_time: 160
+  name: one_circle_obstacles
+  num_episodes: 12000
+  seed: 0
+  time_step: 0.1
+  trial_num: 6
+#sensors:
+#  lidar_1:
+#    base_range: 0.0
+#    base_theta: 0.0
+#    install_on: river_boat_0
+#    max_range: num, 100.0, linear
+#    max_theta: num, 6.283185307179586, linear

@@ -1,0 +1,111 @@
+scenario:
+  name: no_obstacles
+  num_episodes: 500
+  baseline_frequency: 1
+  max_time: 150
+  time_step: 0.1
+  domain: 200
+  experiment_set: DebuggingDirectControlDQN
+  trial_num: 1
+  continue_learning: False
+  seed: 0
+movers:
+  river_boat_0:
+    use_default: True
+    modifications:
+      fuel_capacity: 0.5
+      bsfc: 5.0e-8
+    # specify what should be in the state and how to normalize it
+    state: 
+      delta: num, 0.758375, linear # [rad] pi/4
+      dest_dist: num, 300.0, linear # [m]
+      mu: num, 6.283185307179586, linear # [rad]
+      #power: derived, power_max, linear # [watt]
+      psi: num, 6.283185307179586, linear # [rad]
+      psi_dot: num, 6.283185307179586, linear # [rad/s]
+      v_xp: num, 5.0, linear # [m/s]
+      v_yp: num, 5.0, linear # [m/s]
+    is_agent: True
+  #static_circle_0:
+  #  radius: 10
+  #  is_agent: False
+learning_algorithm:
+  name: DQN
+  gamma: 0.9
+  drop_out: 0.0
+  layers: 100,100
+  activation: relu #leaky_relu
+  last_activation: linear
+  n_batches: 100
+  batch_size: 2048
+  loss: huber
+  target_frequency: 10
+  
+# discrete control point action
+#action_description:
+#  action_type: discrete
+#  action_designation: control_point
+#  angle_values: -60,-30,0,30,60
+#  power_values: None
+#  replan_rate: 5.0
+
+# continous control point action
+#action_description:
+#  action_type: continous
+#  action_designation: control_point
+#  angle_range: -90,90
+#  power_range: None
+#  replan_rate: 5.0
+
+# discrete canned paths
+#action_description:
+#  action_type: discrete
+#  action_designation: canned
+#  turn_values: -90,-45,0,45,90
+#  s_curve_values: -30,-15,0,15,30
+#  power_values: None
+#  replan_rate: 5.0
+
+# discrete direct actuator control
+action_description:
+  action_type: discrete
+  action_designation: direct
+  propeller_values: -15,-5,0,5,15
+  power_values: None
+  eps_schedule: 0,0.9;400,0.2
+
+# continous direct actuator control
+#action_description:
+#  action_type: continous
+#  action_designation: direct
+#  max_propeller: -10,10
+#  max_power: None
+
+
+controller:
+  type: pd
+  coeffs: 0.1,0.5 # need to update these
+optimizer:
+  name: ADAM
+  learn_rate: 0.001
+  beta_1: 0.9
+  beta_2: 0.999
+replay_data:
+  capacity: 100000
+  replay_strategy: all_in_one
+reward_function:
+  #name: EveryStepForGettingCloserToGoal
+  name: EveryStepForGettingCloserToGoalAndHeading
+  success: 100.0
+  crash: -100.0
+  goal_dst: 5.0
+
+#sensors:
+#  lidar_1:
+#    max_range: num, 100.0, linear # [m]
+#    max_theta: num, 6.283185307179586, linear # [rad]
+#    base_theta: 0.0
+#    base_range: 0.0
+#    install_on: river_boat_0
+
+logdata: 

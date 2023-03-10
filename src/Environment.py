@@ -302,14 +302,14 @@ class Environment(ABC):
             total_history = pd.concat([total_history, tmp_histroy], axis=1)
 
         # add data from learning agent
-        la_history = self.agent.output_history
-        la_history = np.reshape(la_history,(len(la_history),len(la_history[0])))
-        columns = []
-        for i in range(len(la_history[0])):
-            columns.append('Network_output_'+str(i))
-        la_history = pd.DataFrame(data=la_history,columns=columns)
-        total_history = pd.concat([total_history,la_history], axis=1)
-        self.agent.reset_output_history()
+        #la_history = self.agent.output_history
+        #la_history = np.reshape(la_history,(len(la_history),len(la_history[0])))
+        #columns = []
+        #for i in range(len(la_history[0])):
+        #    columns.append('Network_output_'+str(i))
+        #la_history = pd.DataFrame(data=la_history,columns=columns)
+        #total_history = pd.concat([total_history,la_history], axis=1)
+        #self.agent.reset_output_history()
 
         # write total history out to a file
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
@@ -837,7 +837,7 @@ class Environment(ABC):
         if settings['name'] == 'DQN':
             la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size,n_batches, batch_size, device, optimizer_settings)
         elif settings['name'] == 'DDPG':
-            max_action_val = np.abs(np.float(self.h_params['action_description']['angle_range'].split(',')[0]))
+            max_action_val = np.deg2rad(np.abs(np.float(self.h_params['action_description']['angle_range'].split(',')[0])))
             la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings, max_action_val)
         else:
             raise ValueError('Learning algorithm currently not supported')

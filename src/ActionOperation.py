@@ -1,6 +1,7 @@
 
 
 # native packages
+import copy
 from abc import ABC, abstractmethod
 import itertools
 
@@ -640,17 +641,18 @@ class PathContinousCp(PathActionOperation):
 
             action_tensor = raw_actions
             action_np = action_tensor.cpu().data.numpy().flatten()
-            org_action = action_np
+            org_action = copy.deepcopy(action_np)
 
+            sample = np.random.random()
+            if sample < eps_threshold:
 
-            for i, tmp_angle in enumerate(action_np):
-                sample = np.random.random()
-                if sample < eps_threshold:
+                for i, tmp_angle in enumerate(action_np):
+
                     # add noise to the action
                     # sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
 
                     #sigma = self.max_propeller / 1.645
-                    sigma = np.abs(self.angle_range[0])
+                    sigma = np.abs(self.angle_range[0])/1.645
                     # sigma = np.reshape(sigma, len(sigma[0]))
                     base_random = tmp_angle + np.random.normal(0, sigma, size=1)[0]
                     # base_random = action_tensor + sigma*torch.randn(self.action_size).cuda()
@@ -671,8 +673,8 @@ class PathContinousCp(PathActionOperation):
 
             cp.append(cp_new)
             new_angle = np.arctan2(cp_new[1] - cp[0][1], cp_new[0] - cp[0][0])
-            if new_angle < 0:
-                new_angle += 2.0 * np.pi
+            #if new_angle < 0:
+            #    new_angle += 2.0 * np.pi
             cp_angle.append(new_angle)
 
             # convert the angle list into concrete control points
@@ -691,8 +693,8 @@ class PathContinousCp(PathActionOperation):
 
                 cp.append(cp_new)
                 new_angle = np.arctan2(cp_new[1] - cp[len(cp_angle) - 1][1], cp_new[0] - cp[len(cp_angle) - 1][0])
-                if new_angle < 0:
-                    new_angle += 2.0 * np.pi
+                #if new_angle < 0:
+                #    new_angle += 2.0 * np.pi
                 cp_angle.append(new_angle)
 
             cp = np.reshape(cp, (len(cp), 2))
@@ -700,7 +702,8 @@ class PathContinousCp(PathActionOperation):
             self.control_points = cp
 
             self.org_action = org_action
-            self.used_action = cp_angle[2:4]
+            self.used_action = list(action_np) #cp_angle[2:4]
+            #tmp = cp_angle[2:4]
             used_action = self.used_action
             self.last_replan = time
         else:

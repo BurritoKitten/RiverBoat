@@ -99,8 +99,7 @@ class ActorNetwork(nn.Module):
         x = self.fc2(x)
         x = self.active(x)
         x = self.out(x)
-        x = self.out_active(x)
-        x = self.max_action * x # should be one for discrete outputs or untransformed outputs
+        x = self.max_action * self.out_active(x) # should be one for discrete outputs or untransformed outputs
 
         return x
 
@@ -176,14 +175,15 @@ class LearningAlgorithms:
         self.device = device
         self.optimizer = None
 
-        self.output_history = []
+        #self.output_history = []
 
-    def reset_output_history(self):
+    #def reset_output_history(self):
         """
         Reset stored values from the output of the network
         :return:
         """
-        self.output_history = []
+        #self.output_history = []
+        #pass
 
     @abstractmethod
     def save_networks(self, ep_num, file_path):
@@ -368,7 +368,7 @@ class DDPG(LearningAlgorithms):
                 #    check = 0
                 out = self.actor_policy_net(torch.Tensor(inp_tensor))
                 #out = torch.concat((torch.Tensor(inp), action), dim=1)
-                self.output_history.append(out.to('cpu').numpy()[0])
+                #self.output_history.append(out.to('cpu').numpy()[0])
 
                 sa = np.concatenate([inp,out.cpu().detach().numpy()[0]])
                 sa = ReplayMemory.convert_numpy_to_tensor(self.device, sa)

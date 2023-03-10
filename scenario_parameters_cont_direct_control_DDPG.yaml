@@ -1,0 +1,64 @@
+action_description:
+  action_designation: direct
+  action_type: continous
+  eps_schedule: 0,0.9;400,0.2
+  max_power: None
+  angle_range: -15,15
+controller:
+  coeffs: 0.1,0.5
+  type: pd
+learning_algorithm:
+  activation: relu
+  batch_size: 2048
+  drop_out: 0.0
+  gamma: 0.9
+  last_activation: tan_h
+  layers: 60,60
+  loss: mse
+  max_action: 10
+  n_batches: 100
+  name: DDPG
+  target_frequency: 10
+  tau: 0.05
+logdata: null
+movers:
+  river_boat_0:
+    use_default: True
+    modifications:
+      fuel_capacity: 0.5
+      bsfc: 5.0e-8
+    # specify what should be in the state and how to normalize it
+    state: 
+      delta: num, 0.758375, linear # [rad] pi/4
+      dest_dist: num, 300.0, linear # [m]
+      mu: num, 6.283185307179586, linear # [rad]
+      #power: derived, power_max, linear # [watt]
+      psi: num, 6.283185307179586, linear # [rad]
+      psi_dot: num, 6.283185307179586, linear # [rad/s]
+      v_xp: num, 5.0, linear # [m/s]
+      v_yp: num, 5.0, linear # [m/s]
+    is_agent: True
+optimizer:
+  beta_1: 0.9
+  beta_2: 0.999
+  learn_rate: 0.001
+  name: ADAM
+replay_data:
+  capacity: 100000
+  replay_strategy: all_in_one
+reward_function:
+  crash: -100.0
+  goal_dst: 5.0
+  name: EveryStepForGettingCloserToGoalAndHeading
+  success: 100.0
+scenario:
+  baseline_frequency: 1
+  continue_learning: false
+  domain: 200
+  experiment_set: DebuggingDirectControlDDPG
+  max_time: 150
+  name: no_obstacles
+  num_episodes: 500
+  seed: 0
+  time_step: 0.1
+  trial_num: 6

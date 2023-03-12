@@ -231,12 +231,10 @@ class DQN(LearningAlgorithms):
         inp = ReplayMemory.convert_numpy_to_tensor(self.device, inp)
         if is_grad:
             out = self.network.forward(torch.Tensor(inp))
-            #self.output_history.append(out.to('cpu').numpy()[0])
             return out, out
         else:
             with torch.no_grad():
                 out = self.network.forward(torch.Tensor(inp))
-                self.output_history.append(out.to('cpu').numpy()[0])
                 return out, out
 
     def train_agent(self, replay_storage):

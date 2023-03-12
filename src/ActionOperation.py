@@ -68,7 +68,7 @@ class ActionOperation(ABC):
         self.name = name
 
     @abstractmethod
-    def action_to_command(self, ep_num, time, state, input):
+    def action_to_command(self, ep_num, time, state, input, is_evaluation):
         """
         the child class needs to implement a function that takes in a state, and produces a command to for the aircraft.
         The command can also use internal data/items to generate the command with the state.
@@ -108,6 +108,7 @@ class ActionOperation(ABC):
         :return:
         """
 
+
 class DirectControlActionDiscrete(ActionOperation):
 
     def __init__(self, name, prop_change_angle_lst, power_change_lst=None, epsilon_schedule=None):
@@ -139,7 +140,7 @@ class DirectControlActionDiscrete(ActionOperation):
             tmp_tup[1] = float(tmp_tup[1])
             self.epsilon_schedule.append(tmp_tup)
 
-    def action_to_command(self, ep_num, time, state, raw_actions):
+    def action_to_command(self, ep_num, time, state, raw_actions, is_evaluation):
         """
         given the index outputted by a neural network, the propeller change and power change is encoded from that.
         Those changes are returned so the caller can convert the agents network raw outputs into a change in
@@ -173,7 +174,7 @@ class DirectControlActionDiscrete(ActionOperation):
         # choose value with maximal q value
         org_action_code = raw_actions.numpy().argmax()
 
-        if np.random.random() <= eps_threshold:
+        if np.random.random() <= eps_threshold and not is_evaluation:
             # choose random action
             action_code = np.random.randint(0,len(raw_actions[0]))
         else:

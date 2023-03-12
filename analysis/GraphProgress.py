@@ -37,7 +37,7 @@ def running_avg(data, window_size):
 
     return avg
 
-def create_std_polygon_verts(x_data,y_data,window_size):
+def create_std_polygon_verts(x_data,y_data,window_size, df):
     """
     takes a list of data points in time and generates a set of verticies that have the standard deviation around the
     x_data
@@ -70,27 +70,11 @@ def create_std_polygon_verts(x_data,y_data,window_size):
 
     return poly
 
-if __name__ == '__main__':
-    # ------------------------------------------------------------------------------------------------------------------
-    # Edit this block to control what is rendered ----------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
-    # input controls.
-    trial_group = 'DebuggingPathDDPG'
-    trial_number = 6
-    window_size = 200
+def general_training_graphs():
 
-    small_window = 75
-    medium_window = 125
-    large_window = 250
-    huge_window = 500
-
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Edit this block to control what is rendered ----------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
 
     # get hyperparameters to get epsilon schedule
-    file_name = '..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\hyper_parameters.yaml'
+    file_name = '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\hyper_parameters.yaml'
     with open(file_name, "r") as stream:
         try:
             hp_data = yaml.safe_load(stream)
@@ -105,44 +89,41 @@ if __name__ == '__main__':
         tmp_tup[1] = float(tmp_tup[1])
         epsilon_schedule.append(tmp_tup)
 
-
-
-    file_name = '..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\Progress\\Data\\training_progress.csv'
+    file_name = '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Data\\training_progress.csv'
     df = pd.read_csv(file_name)
     max_ep_num = df['ep_num'].max()
-    if max_ep_num >epsilon_schedule[-1][0]:
-        epsilon_schedule.append([max_ep_num,epsilon_schedule[-1][1]])
+    if max_ep_num > epsilon_schedule[-1][0]:
+        epsilon_schedule.append([max_ep_num, epsilon_schedule[-1][1]])
     epsilon_schedule = np.reshape(epsilon_schedule, (len(epsilon_schedule), 2))
 
     # smoothed value
     cumulative_reward = df['cumulative_reward'].values
     min_dst = df['min_dst'].values
-    is_crashed = df['is_crashed'].values*1
-    is_success = df['is_success'].values*1
+    is_crashed = df['is_crashed'].values * 1
+    is_success = df['is_success'].values * 1
 
-    #smooth_reward = savgol_filter(cumulative_reward, window_length=window_size, polyorder=3)
-    smooth_reward = running_avg(cumulative_reward,window_size)
-    #smooth_min_dst = savgol_filter(min_dst, window_length=window_size, polyorder=3)
-    smooth_min_dst = running_avg(min_dst,window_size)
-    #smooth_is_crashed = savgol_filter(is_crashed, window_length=window_size, polyorder=3)
-    smooth_is_crashed_small = running_avg(is_crashed,small_window)
+    # smooth_reward = savgol_filter(cumulative_reward, window_length=window_size, polyorder=3)
+    smooth_reward = running_avg(cumulative_reward, window_size)
+    # smooth_min_dst = savgol_filter(min_dst, window_length=window_size, polyorder=3)
+    smooth_min_dst = running_avg(min_dst, window_size)
+    # smooth_is_crashed = savgol_filter(is_crashed, window_length=window_size, polyorder=3)
+    smooth_is_crashed_small = running_avg(is_crashed, small_window)
     smooth_is_crashed_medium = running_avg(is_crashed, medium_window)
     smooth_is_crashed_large = running_avg(is_crashed, large_window)
     smooth_is_crashed_huge = running_avg(is_crashed, huge_window)
-    #smooth_is_success = savgol_filter(is_success, window_length=window_size, polyorder=3)
-    smooth_is_success_small = running_avg(is_success,small_window)
+    # smooth_is_success = savgol_filter(is_success, window_length=window_size, polyorder=3)
+    smooth_is_success_small = running_avg(is_success, small_window)
     smooth_is_success_medium = running_avg(is_success, medium_window)
     smooth_is_success_large = running_avg(is_success, large_window)
     smooth_is_success_huge = running_avg(is_success, huge_window)
     # standard deviation over a moving window for values
-    std_poly_reward = create_std_polygon_verts(smooth_reward, cumulative_reward, window_size)
-    std_poly_min_dst = create_std_polygon_verts(smooth_min_dst, min_dst, window_size)
-    #std_poly_is_crashed = create_std_polygon_verts(smooth_is_crashed, min_dst, window_size)
-    #std_poly_is_success = create_std_polygon_verts(smooth_is_success, min_dst, window_size)
-
+    std_poly_reward = create_std_polygon_verts(smooth_reward, cumulative_reward, window_size,df)
+    std_poly_min_dst = create_std_polygon_verts(smooth_min_dst, min_dst, window_size,df)
+    # std_poly_is_crashed = create_std_polygon_verts(smooth_is_crashed, min_dst, window_size)
+    # std_poly_is_success = create_std_polygon_verts(smooth_is_success, min_dst, window_size)
 
     sns.set_theme()
-    fig = plt.figure(0, figsize=(14,8))
+    fig = plt.figure(0, figsize=(14, 8))
     ax1 = fig.add_subplot(111)
     ax1.plot(df['ep_num'].values, smooth_reward, color='tab:blue')
     ax1.plot(df['ep_num'].values, cumulative_reward, '--', alpha=0.3, color='tab:blue')
@@ -161,9 +142,10 @@ if __name__ == '__main__':
     ax2 = ax1.twinx()
     ax2.plot(epsilon_schedule[:, 0], epsilon_schedule[:, 1], color='tab:olive')
     ax2.set_ylabel('Epsilon Schedule', color='tab:olive')
-    ax2.set_ylim([0,1])
+    ax2.set_ylim([0, 1])
 
-    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\CumulativeReward.png')
+    plt.savefig(
+        '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\CumulativeReward.png')
 
     # ------------------------------------------------------------------------------------------------------------------
     # minimum distance to goal -----------------------------------------------------------------------------------------
@@ -172,7 +154,8 @@ if __name__ == '__main__':
 
     ax1.plot(df['ep_num'].values, smooth_min_dst, color='tab:blue')
     ax1.plot(df['ep_num'].values, min_dst, '--', alpha=0.3, color='tab:blue')
-    ax1.plot(df['ep_num'].values,np.ones_like(df['ep_num'].values)*5.0,'--',color='tab:orange',label='Goal Distance')
+    ax1.plot(df['ep_num'].values, np.ones_like(df['ep_num'].values) * 5.0, '--', color='tab:orange',
+             label='Goal Distance')
 
     # graph std tolerance
     polygon = Polygon(std_poly_min_dst, True, label='Std')
@@ -191,13 +174,14 @@ if __name__ == '__main__':
     ax2.set_ylabel('Epsilon Schedule', color='tab:olive')
     ax2.set_ylim([0, 1])
 
-    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\MinimumDistanceToDestination.png')
+    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(
+        trial_number) + '\\Progress\\Graphs\\MinimumDistanceToDestination.png')
 
     # ------------------------------------------------------------------------------------------------------------------
     # crash rate -----------------------------------------------------------------------------------------
     fig = plt.figure(2, figsize=(14, 8))
     ax1 = fig.add_subplot(111)
-    ax1.plot(df['ep_num'].values, smooth_is_crashed_small, color='tab:blue',label=str(small_window))
+    ax1.plot(df['ep_num'].values, smooth_is_crashed_small, color='tab:blue', label=str(small_window))
     ax1.plot(df['ep_num'].values, smooth_is_crashed_medium, color='k', label=str(medium_window))
     ax1.plot(df['ep_num'].values, smooth_is_crashed_large, color='tab:purple', label=str(large_window))
     ax1.plot(df['ep_num'].values, smooth_is_crashed_huge, color='tab:green', label=str(huge_window))
@@ -219,7 +203,7 @@ if __name__ == '__main__':
     # success -----------------------------------------------------------------------------------------
     fig = plt.figure(3, figsize=(14, 8))
     ax1 = fig.add_subplot(111)
-    ax1.plot(df['ep_num'].values, smooth_is_success_small, color='tab:blue',label=str(small_window))
+    ax1.plot(df['ep_num'].values, smooth_is_success_small, color='tab:blue', label=str(small_window))
     ax1.plot(df['ep_num'].values, smooth_is_success_medium, color='k', label=str(medium_window))
     ax1.plot(df['ep_num'].values, smooth_is_success_large, color='tab:purple', label=str(large_window))
     ax1.plot(df['ep_num'].values, smooth_is_success_huge, color='tab:green', label=str(huge_window))
@@ -227,15 +211,92 @@ if __name__ == '__main__':
     ax1.legend()
 
     ax2 = ax1.twinx()
-    ax2.plot(epsilon_schedule[:,0],epsilon_schedule[:,1],color='tab:olive')
-    ax2.set_ylabel('Epsilon Schedule',color='tab:olive')
+    ax2.plot(epsilon_schedule[:, 0], epsilon_schedule[:, 1], color='tab:olive')
+    ax2.set_ylabel('Epsilon Schedule', color='tab:olive')
     y_lims = ax1.get_ylim()
     ax2.set_ylim(y_lims)
-
 
     ax1.set_title('Success Rate with Window Size')
     ax1.set_xlabel('Episode Number [-]')
     ax1.set_ylabel('Success Rate [-]')
 
-    #plt.show()
-    plt.savefig('..\\Output\\'+str(trial_group)+'\\'+str(trial_number)+'\\Progress\\Graphs\\SuccessRate.png')
+    # plt.show()
+    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\SuccessRate.png')
+    plt.close('all')
+
+def graph_evaluation_metrics():
+
+    # get hyperparameters to get epsilon schedule
+    file_name = '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\hyper_parameters.yaml'
+    with open(file_name, "r") as stream:
+        try:
+            hp_data = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    epsilon_schedule = hp_data['action_description']['eps_schedule']
+    tuples = epsilon_schedule.split(';')
+    epsilon_schedule = []
+    for tup in tuples:
+        tmp_tup = tup.split(",")
+        tmp_tup[0] = int(tmp_tup[0])
+        tmp_tup[1] = float(tmp_tup[1])
+        epsilon_schedule.append(tmp_tup)
+
+    file_name = '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Data\\evaluation_average.csv'
+    df = pd.read_csv(file_name)
+    max_ep_num = df['EpNum'].max()
+    if max_ep_num > epsilon_schedule[-1][0]:
+        epsilon_schedule.append([max_ep_num, epsilon_schedule[-1][1]])
+    epsilon_schedule = np.reshape(epsilon_schedule, (len(epsilon_schedule), 2))
+
+    fig = plt.figure(0, figsize=(14, 8))
+    ax1 = fig.add_subplot(111)
+    ax1.plot(df['EpNum'].values,df['successRate'].values,label='Success')
+    ax1.plot(df['EpNum'].values, df['crashRate'].values, label='Crash')
+    ax1.set_xlabel('Episode Number')
+    ax1.set_ylabel('Outcome Rate [-]')
+    ax1.legend()
+    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\EvaluationOutcomeRate.png')
+
+    fig = plt.figure(1, figsize=(14, 8))
+    ax1 = fig.add_subplot(111)
+    ax1.plot(df['EpNum'].values, df['avgMinDst'].values)
+    ax1.plot([0,max_ep_num],[5.0,5.0],'--')
+    ax1.set_xlabel('Episode Number')
+    ax1.set_ylabel('Minimum Distance [m]')
+    plt.savefig(
+        '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\EvaluationMinDist.png')
+
+    fig = plt.figure(2, figsize=(14, 8))
+    ax1 = fig.add_subplot(111)
+    ax1.plot(df['EpNum'].values, df['avgCumReward'].values)
+    ax1.set_xlabel('Episode Number')
+    ax1.set_ylabel('Average Reward [-]')
+    plt.savefig(
+        '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\EvaluationReward.png')
+
+
+    plt.close()
+
+if __name__ == '__main__':
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Edit this block to control what is rendered ----------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+    # input controls.
+    trial_group = 'DebuggingDirectControlDQN'
+    trial_number = 2
+    window_size = 200
+
+    small_window = 75
+    medium_window = 125
+    large_window = 250
+    huge_window = 500
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Edit this block to control what is rendered ----------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+
+    general_training_graphs()
+
+    graph_evaluation_metrics()

@@ -36,10 +36,9 @@ class Environment(ABC):
         self.device = 'cuda' # TODO need to check this
         self.header = ['time', 'reward', 'is_terminal', 'is_crashed', 'is_reached', 'destination_x','destination_y'] # history data frame header
         self.history = None  # eventually a data frame to hold information about the simulation
-
-    #@abstractmethod
-    def initialize_environment(self):
-        pass
+        self.evaluation_info = None  # dictionary used for setting the initial conditions of evaluation episodes.
+        self.n_evaluations = 0  # the size of the evaluation episode set.
+        self.destination = None  # point in space for the destination of the boat (x,y) [m]
 
     #@abstractmethod
     def reset_environment(self, reset_to_max_power):
@@ -134,8 +133,68 @@ class Environment(ABC):
         self.ao.reset()
 
     #@abstractmethod
-    def reset_baseline_environment(self):
-        pass
+    def reset_evaluation_environment(self, row_idx, reset_to_max_power):
+
+        # reset the destination
+        self.destination = [self.evaluation_info['destination_x'].iloc[row_idx], self.evaluation_info['destination_y'].iloc[row_idx]]
+
+        # reset the mover initial values
+        # set up random locations and orientations for the movers
+        for name, mover in self.mover_dict.items():
+
+            if 'river_boat' in name:
+
+                # whipe state to base configuration for the boat
+                mover.initalize_in_state_dict()
+
+                # loop through reset items
+                for i, variable in enumerate(self.evaluation_info.columns):
+
+                    if 'river_boat' in variable:
+                        var_mover = variable.split('-')[1]
+                        mover.state_dict[var_mover] = self.evaluation_info[variable].iloc[row_idx]
+
+
+                mover.state_dict['v_x'] = mover.state_dict['v_xp'] * np.cos(-mover.state_dict['psi']) + \
+                                          mover.state_dict[
+                                              'v_yp'] * np.sin(-mover.state_dict['psi'])
+                mover.state_dict['v_y'] = -mover.state_dict['v_xp'] * np.sin(-mover.state_dict['psi']) + \
+                                          mover.state_dict[
+                                              'v_yp'] * np.cos(-mover.state_dict['psi'])
+
+                # power setting needs to be set from action designation.
+                if reset_to_max_power:
+                    tmp_power = mover.state_dict['power_max']
+                else:
+                    tmp_power = np.random.random() * mover.state_dict['power_max']
+
+                mover.set_control(tmp_power, mover.state_dict['delta'])
+
+                # reset the fuel on the boat
+                mover.state_dict['fuel'] = mover.state_dict['fuel_capacity']
+
+            elif 'static_circle' in name:
+                # reset the static circle
+
+                # loop through reset items
+                for i, variable in enumerate(self.evaluation_info.columns):
+
+                    if 'static_circle' in variable:
+                        mover.state_dict[variable] = self.evaluation_info[variable].iloc[row_idx]
+            else:
+                raise ValueError('Mover not currently supported')
+
+        # updates sensors
+        for name, mover in self.mover_dict.items():
+            mover.update_sensors(self.mover_dict)
+            mover.derived_measurements(self.destination)
+
+        # reset reward function information
+        self.reward_func.reset(self.mover_dict)
+
+        # reset the action operation
+        self.ao.reset()
+
 
     def add_mover(self, mover):
         """
@@ -150,7 +209,7 @@ class Environment(ABC):
         else:
             raise ValueError('Added mover must be of type mover')
 
-    def run_simulation(self, ep_num, is_baseline, reset_to_max_power):
+    def run_simulation(self, ep_num, is_evaluation, reset_to_max_power, evaluation_number=0):
         """
 
         :param is_baseline: a boolean for if the episode being run is a baseline episode or a training episode is being
@@ -160,8 +219,9 @@ class Environment(ABC):
         """
 
         # reset environment
-        if is_baseline:
-            self.reset_baseline_environment(reset_to_max_power)
+        if is_evaluation:
+            # reset the initial conditions
+            self.reset_evaluation_environment(evaluation_number, reset_to_max_power)
         else:
             self.reset_environment(reset_to_max_power)
 
@@ -174,6 +234,10 @@ class Environment(ABC):
         delta_t = self.h_params['scenario']['time_step']
         max_t = float(self.h_params['scenario']['max_time'])
         max_steps = int(np.ceil(max_t / delta_t))
+        if is_evaluation:
+            # if the simulation is an evaluation simulation, allow for more simulation time. Here the consecrn is how
+            # well the agent completes its objective not how fast.
+            max_steps *= 2
 
         # reset history of the movers
         for name, mover in self.mover_dict.items():
@@ -193,7 +257,7 @@ class Environment(ABC):
         while step_num < max_steps and not is_terminal:
 
             # step the simulation
-            interim_state, interim_org_action, interim_used_action, interim_path_cps, interim_critic_vals, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step)
+            interim_state, interim_org_action, interim_used_action, interim_path_cps, interim_critic_vals, interim_reward, interim_next_state, end_step, is_terminal, is_crashed, is_success, curr_dist = self.step(ep_num, t, end_step, is_evaluation)
 
             # the non-dimensional values of the state
             # org_action - action before exmplation is added
@@ -242,7 +306,8 @@ class Environment(ABC):
                 is_terminal_tensor = ReplayMemory.convert_numpy_to_tensor(self.device, [is_terminal])
 
                 # store the data
-                self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
+                if not is_evaluation:
+                    self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
 
                 # reset the state to None for the agents next step
                 reset_state = True
@@ -280,12 +345,12 @@ class Environment(ABC):
             mover.trim_history(step_num)
 
         # sort the stored data into buffers as needed
-        if not is_baseline:
+        if not is_evaluation:
             self.replay_storage.sort_data_into_buffers()
 
         return cumulative_reward, is_crashed, is_success, min_dst
 
-    def write_history(self, ep_num):
+    def write_history(self, ep_num, is_evaluation, eval_num=0):
         """
         writes the histories of the movers and the simulation out for later analysis
         :return:
@@ -301,21 +366,16 @@ class Environment(ABC):
             # add history together
             total_history = pd.concat([total_history, tmp_histroy], axis=1)
 
-        # add data from learning agent
-        #la_history = self.agent.output_history
-        #la_history = np.reshape(la_history,(len(la_history),len(la_history[0])))
-        #columns = []
-        #for i in range(len(la_history[0])):
-        #    columns.append('Network_output_'+str(i))
-        #la_history = pd.DataFrame(data=la_history,columns=columns)
-        #total_history = pd.concat([total_history,la_history], axis=1)
-        #self.agent.reset_output_history()
-
         # write total history out to a file
-        file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
-        total_history.to_csv(file_name, index=False)
+        if is_evaluation:
+            file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
+                self.h_params['scenario']['trial_num']) + '//Evaluation//Data//History_' + str(ep_num) + '-'+str(eval_num)+'.csv'
+            total_history.to_csv(file_name, index=False)
+        else:
+            file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
+            total_history.to_csv(file_name, index=False)
 
-    def step(self, ep_num, t, end_step):
+    def step(self, ep_num, t, end_step, is_evaluation):
         """
         steps the simulation one time step. The agent is given a normalized state to make an action selection. Then
         the action is operated on the environment
@@ -370,7 +430,7 @@ class Environment(ABC):
                 # used_action - the action that may or may not have exploration added to it. THis is what is used for the simulation to step
                 # path_cps - if a path is used, this is a list of control points that define the path. Else it is false
                 # end_step - if this is the end of an agent step
-                propeller_angle_change, power_change, org_action, used_action, path_cps, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs)
+                propeller_angle_change, power_change, org_action, used_action, path_cps, end_step = self.ao.action_to_command(ep_num, t, mover.state_dict, raw_ouputs, is_evaluation)
 
                 # apply the actuator changes to the mover
                 power = power_change + mover.state_dict['power']
@@ -507,6 +567,9 @@ class Environment(ABC):
         # get the replay buffer
         self.get_memory_mechanism()
 
+        # parse the evaluation data
+        self.get_evaluation_information()
+
         # loop over training
         elapsed_episodes = 0
         num_episodes = self.h_params['scenario']['num_episodes']
@@ -520,16 +583,19 @@ class Environment(ABC):
 
         while elapsed_episodes < num_episodes:
 
-            print("Episode Number {}".format(elapsed_episodes))
-
-            # run baseline episodes if required
+            # check if evaluation episodes are to be rn
+            if elapsed_episodes % self.h_params['scenario']['evaluation_frequency'] == 0 or elapsed_episodes == 0:
+                # run a suite of evaluation episodes
+                self.run_evaluation_set(elapsed_episodes, reset_to_max_power)
 
             # run the episode where training data is accumulated
-            is_baseline = False
-            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(elapsed_episodes,is_baseline, reset_to_max_power)
+            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(elapsed_episodes,is_evaluation=False, reset_to_max_power=reset_to_max_power)
+
+            print("Episode Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(elapsed_episodes, is_success, min_dst,
+                                                                                 cumulative_reward))
 
             # write episode history out to a file
-            self.write_history(elapsed_episodes)
+            self.write_history(elapsed_episodes,is_evaluation=False)
 
             # save macro simulation information
             with open(progress_file_name, 'a') as f:
@@ -575,8 +641,8 @@ class Environment(ABC):
 
         # create sub folders
         sub_folder_names = ["\Models","\TrainingHistory","\TrainingHistory\Data","\TrainingHistory\Graphs","\TrainingHistory\Videos",
-                            "\Baseline","\Baseline\Data","\Baseline\Graphs","\Baseline\Videos",
-                            "\RobustBaseline", "\RobustBaseline\Data", "\RobustBaseline\Graphs",
+                            "\Evaluation","\Evaluation\Data","\Evaluation\Graphs","\Evaluation\Videos",
+                            #"\EvaluationBaseline", "\EvaluationBaseline\Data", "\EvaluationBaseline\Graphs",
                             "\Progress","\Progress\Data","\Progress\Graphs"]
         for sfn in sub_folder_names:
             try:
@@ -855,6 +921,108 @@ class Environment(ABC):
         memory_info = self.h_params['replay_data']
 
         self.replay_storage = ReplayMemory.ReplayStorage(capacity=memory_info['capacity'], extra_fields=[], strategy=memory_info['replay_strategy'])
+
+    def get_evaluation_information(self):
+        """
+        looks at the information in the input file used for the evaluation episodes. This prepares some of the information
+        to use in the evaluation episodes
+        :return:
+        """
+
+        # get the destination location information
+        eval_info = self.h_params['evaluation_init']
+
+        eval_set_size = []
+        evaluation_info = pd.DataFrame()
+        for key, value in eval_info.items():
+            if type(value) == str:
+                value_lst = value.split(',')
+                eval_set_size.append(len(value_lst))
+                evaluation_info[key] = [float(i) for i in value_lst]
+            else:
+                for sub_key, sub_value in value.items():
+                    value_lst = sub_value.split(',')
+                    eval_set_size.append(len(value_lst))
+                    evaluation_info[key+"-"+sub_key] = [float(i) for i in value_lst]
+
+        if len(set(evaluation_info)) == 1:
+            raise ValueError('Evaluation init information are not of consistent lengths. Please verify each variable has the same number of values')
+
+        self.evaluation_info = evaluation_info
+        self.n_evaluations = len(evaluation_info)
+
+        # create the files for saveing evaluation information
+        file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
+            self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation.csv'
+        with open(file_name, 'w') as f:
+            f.write("EpNum,SetNum,isSuccess,isCrashed,minDst,cumReward\n")
+
+        file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
+            self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation_average.csv'
+        with open(file_name, 'w') as f:
+            f.write("EpNum,successRate,crashRate,avgMinDst,avgCumReward\n")
+
+    def run_evaluation_set(self, ep_num, reset_to_max_power):
+        """
+        runs a set of evaluation simulations. The simulations are a deterministic set with a fixed group of initial
+        conditions. These are used for a fixed measuring stick for performance of the agent's learning. The initial
+        conditions are outlined in the input file.
+        :return:
+        """
+
+        crash_set = []
+        success_set = []
+        min_dst_set = []
+        cum_reward_set = []
+        for i in range(self.n_evaluations):
+
+            # run the simulation in evaluation mode
+            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(ep_num,is_evaluation=True,reset_to_max_power=reset_to_max_power,evaluation_number=i)
+
+            print("Evaluation Episode Number={}\tSet Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(ep_num,i,is_success,min_dst,cumulative_reward))
+
+            # save set numbers information
+            crash_set.append(int(is_crashed))
+            success_set.append(int(is_success))
+            min_dst_set.append(min_dst)
+            cum_reward_set.append(cumulative_reward)
+
+            # write episode history out to a file
+            self.write_history(ep_num, is_evaluation=True, eval_num=i)
+
+            file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
+                self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation.csv'
+            with open(file_name,'a') as f:
+                f.write(str(ep_num))
+                f.write(",")
+                f.write(str(i))
+                f.write(",")
+                f.write(str(is_success))
+                f.write(",")
+                f.write(str(is_crashed))
+                f.write(",")
+                f.write(str(min_dst))
+                f.write(",")
+                f.write(str(cumulative_reward))
+                f.write("\n")
+
+                f.flush()
+
+        # open average metrics and write the information
+        file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
+            self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation_average.csv'
+        with open(file_name, 'a') as f:
+            f.write(str(ep_num))
+            f.write(",")
+            f.write(str(np.mean(success_set)))
+            f.write(",")
+            f.write(str(np.mean(crash_set)))
+            f.write(",")
+            f.write(str(np.mean(min_dst_set)))
+            f.write(",")
+            f.write(str(np.mean(cum_reward_set)))
+
+            f.write("\n")
 
     def save_hparams(self):
         """

@@ -1,12 +1,12 @@
 scenario:
   name: no_obstacles
-  num_episodes: 500
-  baseline_frequency: 1
-  max_time: 150
+  num_episodes: 501
+  evaluation_frequency: 25
+  max_time: 160
   time_step: 0.1
   domain: 200
   experiment_set: DebuggingDirectControlDQN
-  trial_num: 1
+  trial_num: 2
   continue_learning: False
   seed: 0
 movers:
@@ -109,3 +109,18 @@ reward_function:
 #    install_on: river_boat_0
 
 logdata: 
+
+# defines a set of initial conditions to run deterministic episodes to evaluate 
+# the learning progress of the agent without random actions. 
+# A list of items for the variable are used to set the initial conditions
+evaluation_init:
+  destination_x: 150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  destination_y: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+  river_boat_0:
+    x_pos: 25,25,25,25,25,100,100,100,100,100,140,140,140,140,140
+    y_pos: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+    psi: 0,45,90,135,180,0,45,90,135,180,0,45,90,135,180
+    psi_dot: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    v_xp: 0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5
+    v_yp: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    delta: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

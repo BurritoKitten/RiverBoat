@@ -10,7 +10,7 @@ controller:
   coeffs: 0.1,0.5
   type: pd
 learning_algorithm:
-  activation: leaky_relu
+  activation: relu
   batch_size: 256
   drop_out: 0.0
   gamma: 0.9
@@ -52,16 +52,16 @@ reward_function:
   name: MultiStepCrashSuccessReward
   success: 100.0
 scenario:
-  baseline_frequency: 1
+  evaluation_frequency: 100
   continue_learning: false
   domain: 200
   experiment_set: DebuggingPath
   max_time: 160
   name: one_circle_obstacles
-  num_episodes: 12000
+  num_episodes: 12001
   seed: 0
   time_step: 0.1
-  trial_num: 6
+  trial_num: 7
 #sensors:
 #  lidar_1:
 #    base_range: 0.0
@@ -69,3 +69,15 @@ scenario:
 #    install_on: river_boat_0
 #    max_range: num, 100.0, linear
 #    max_theta: num, 6.283185307179586, linear
+
+evaluation_init:
+  destination_x: 150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
+  destination_y: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+  river_boat_0:
+    x_pos: 25,25,25,25,25,25,25,25,100,100,100,100,100,100,100,100,140,140,140,140,140,140,140,140
+    y_pos: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+    psi: 0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144
+    psi_dot: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    v_xp: 0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5
+    v_yp: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    delta: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

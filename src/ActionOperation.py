@@ -287,7 +287,7 @@ class DirectControlActionContinous(ActionOperation):
             tmp_tup[1] = float(tmp_tup[1])
             self.epsilon_schedule.append(tmp_tup)
 
-    def action_to_command(self, ep_num, time, state, raw_actions):
+    def action_to_command(self, ep_num, time, state, raw_actions, is_evaluation):
         """
         converts the outputs of a neural network to a propeller and power change amount. This is assumed a continues
         value. The input should be bounded from -1 to 1. The conversion does not have to be linear but currently
@@ -320,7 +320,7 @@ class DirectControlActionContinous(ActionOperation):
         action_np = action_tensor.cpu().data.numpy().flatten()
 
         sample = np.random.random()
-        if sample < eps_threshold:
+        if sample < eps_threshold and not is_evaluation:
             # add noise to the action
             #sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
             sigma = self.max_propeller/ 1.645
@@ -600,7 +600,7 @@ class PathContinousCp(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, ep_num, time, state, raw_actions):
+    def action_to_command(self, ep_num, time, state, raw_actions, is_evaluation):
         """
         converts the raw output of the agent (neural network) and using the path to get the propeller angle and power
         change
@@ -645,7 +645,7 @@ class PathContinousCp(PathActionOperation):
             org_action = copy.deepcopy(action_np)
 
             sample = np.random.random()
-            if sample < eps_threshold:
+            if sample < eps_threshold and not is_evaluation:
 
                 for i, tmp_angle in enumerate(action_np):
 
@@ -825,7 +825,7 @@ class PathDiscreteCp(PathActionOperation):
         # generates a path in the form of (x,y) points
         self.path = bezier_curve(control_points, n_path_points)
 
-    def action_to_command(self, ep_num, time, state, raw_actions):
+    def action_to_command(self, ep_num, time, state, raw_actions,is_evaluation):
         """
         takes the raw ouput of the agent (neural network) and converts it to propeller angle change and power change
         values
@@ -869,7 +869,7 @@ class PathDiscreteCp(PathActionOperation):
             # choose value with maximal q value
             org_action = raw_actions.numpy().argmax()
 
-            if np.random.random() <= eps_threshold:
+            if np.random.random() <= eps_threshold and not is_evaluation:
                 # choose random action
                 used_action = np.random.randint(0, high=len(raw_actions[0]))
             else:

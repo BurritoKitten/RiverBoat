@@ -284,8 +284,8 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingDirectControlDQN'
-    trial_number = 2
+    trial_group = 'DebuggingPathDDPG'
+    trial_number = 11
     window_size = 200
 
     small_window = 75

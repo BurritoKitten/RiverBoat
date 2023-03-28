@@ -348,7 +348,7 @@ class Environment(ABC):
         if not is_evaluation:
             self.replay_storage.sort_data_into_buffers()
 
-        return cumulative_reward, is_crashed, is_success, min_dst
+        return cumulative_reward, is_crashed, is_success, min_dst, t
 
     def write_history(self, ep_num, is_evaluation, eval_num=0):
         """
@@ -578,7 +578,7 @@ class Environment(ABC):
         progress_file_name = "Output/" + str(self.h_params['scenario']['experiment_set']) + "/" + str(
                                self.h_params['scenario']['trial_num'])+"/Progress/Data/training_progress.csv"
         with open(progress_file_name, 'w') as f:
-            f.write('ep_num,cumulative_reward,is_crashed,is_success,min_dst\n')
+            f.write('ep_num,cumulative_reward,is_crashed,is_success,min_dst,simulation_time\n')
             f.flush()
 
         while elapsed_episodes < num_episodes:
@@ -589,7 +589,7 @@ class Environment(ABC):
                 self.run_evaluation_set(elapsed_episodes, reset_to_max_power)
 
             # run the episode where training data is accumulated
-            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(elapsed_episodes,is_evaluation=False, reset_to_max_power=reset_to_max_power)
+            cumulative_reward, is_crashed, is_success, min_dst, total_episode_time = self.run_simulation(elapsed_episodes,is_evaluation=False, reset_to_max_power=reset_to_max_power)
 
             print("Episode Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(elapsed_episodes, is_success, min_dst,
                                                                                  cumulative_reward))
@@ -599,7 +599,7 @@ class Environment(ABC):
 
             # save macro simulation information
             with open(progress_file_name, 'a') as f:
-                f.write(str(elapsed_episodes)+','+str(cumulative_reward)+','+str(is_crashed)+','+str(is_success)+','+str(min_dst)+'\n')
+                f.write(str(elapsed_episodes)+','+str(cumulative_reward)+','+str(is_crashed)+','+str(is_success)+','+str(min_dst)+','+str(total_episode_time)+'\n')
                 f.flush()
 
             # train the networks
@@ -955,12 +955,12 @@ class Environment(ABC):
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
             self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation.csv'
         with open(file_name, 'w') as f:
-            f.write("EpNum,SetNum,isSuccess,isCrashed,minDst,cumReward\n")
+            f.write("EpNum,SetNum,isSuccess,isCrashed,minDst,cumReward,simTime\n")
 
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
             self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation_average.csv'
         with open(file_name, 'w') as f:
-            f.write("EpNum,successRate,crashRate,avgMinDst,avgCumReward\n")
+            f.write("EpNum,successRate,crashRate,avgMinDst,avgCumReward,simTime\n")
 
     def run_evaluation_set(self, ep_num, reset_to_max_power):
         """
@@ -974,10 +974,11 @@ class Environment(ABC):
         success_set = []
         min_dst_set = []
         cum_reward_set = []
+        time_to_completion_set = []
         for i in range(self.n_evaluations):
 
             # run the simulation in evaluation mode
-            cumulative_reward, is_crashed, is_success, min_dst = self.run_simulation(ep_num,is_evaluation=True,reset_to_max_power=reset_to_max_power,evaluation_number=i)
+            cumulative_reward, is_crashed, is_success, min_dst, total_episode_time = self.run_simulation(ep_num,is_evaluation=True,reset_to_max_power=reset_to_max_power,evaluation_number=i)
 
             print("Evaluation Episode Number={}\tSet Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(ep_num,i,is_success,min_dst,cumulative_reward))
 
@@ -986,6 +987,7 @@ class Environment(ABC):
             success_set.append(int(is_success))
             min_dst_set.append(min_dst)
             cum_reward_set.append(cumulative_reward)
+            time_to_completion_set.append(total_episode_time)
 
             # write episode history out to a file
             self.write_history(ep_num, is_evaluation=True, eval_num=i)
@@ -1004,6 +1006,8 @@ class Environment(ABC):
                 f.write(str(min_dst))
                 f.write(",")
                 f.write(str(cumulative_reward))
+                f.write(",")
+                f.write(str(total_episode_time))
                 f.write("\n")
 
                 f.flush()
@@ -1012,17 +1016,22 @@ class Environment(ABC):
         file_name = 'Output//' + str(self.h_params['scenario']['experiment_set']) + '//' + str(
             self.h_params['scenario']['trial_num']) + '//Progress//Data//evaluation_average.csv'
         with open(file_name, 'a') as f:
-            f.write(str(ep_num))
-            f.write(",")
-            f.write(str(np.mean(success_set)))
-            f.write(",")
-            f.write(str(np.mean(crash_set)))
-            f.write(",")
-            f.write(str(np.mean(min_dst_set)))
-            f.write(",")
-            f.write(str(np.mean(cum_reward_set)))
+            str_to_write = ''
+            str_to_write += str(ep_num)
+            str_to_write += ","
+            str_to_write += str(np.mean(success_set))
+            str_to_write += ","
+            str_to_write += str(np.mean(crash_set))
+            str_to_write += ","
+            str_to_write += str(np.mean(min_dst_set))
+            str_to_write += ","
+            str_to_write += str(np.mean(cum_reward_set))
+            str_to_write += ","
+            str_to_write += str(np.mean(time_to_completion_set))
 
-            f.write("\n")
+            str_to_write += "\n"
+
+            f.write(str_to_write)
 
     def save_hparams(self):
         """

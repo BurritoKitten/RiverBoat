@@ -101,6 +101,7 @@ def general_training_graphs():
     min_dst = df['min_dst'].values
     is_crashed = df['is_crashed'].values * 1
     is_success = df['is_success'].values * 1
+    sim_time = df['simulation_time']
 
     # smooth_reward = savgol_filter(cumulative_reward, window_length=window_size, polyorder=3)
     smooth_reward = running_avg(cumulative_reward, window_size)
@@ -121,6 +122,11 @@ def general_training_graphs():
     std_poly_min_dst = create_std_polygon_verts(smooth_min_dst, min_dst, window_size,df)
     # std_poly_is_crashed = create_std_polygon_verts(smooth_is_crashed, min_dst, window_size)
     # std_poly_is_success = create_std_polygon_verts(smooth_is_success, min_dst, window_size)
+    smooth_sim_time_small = running_avg(sim_time, small_window)
+    smooth_sim_time_medium = running_avg(sim_time, medium_window)
+    smooth_sim_time_large = running_avg(sim_time, large_window)
+    smooth_sim_time_huge = running_avg(sim_time, huge_window)
+
 
     sns.set_theme()
     fig = plt.figure(0, figsize=(14, 8))
@@ -222,6 +228,38 @@ def general_training_graphs():
 
     # plt.show()
     plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\SuccessRate.png')
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # time to reach goal -----------------------------------------------------------------------------------------
+    fig = plt.figure(4, figsize=(14, 8))
+    ax1 = fig.add_subplot(111)
+
+    ax1.plot(df['ep_num'].values, smooth_sim_time_small, color='tab:blue', label=str(small_window))
+    ax1.plot(df['ep_num'].values, smooth_sim_time_medium, color='k', label=str(medium_window))
+    ax1.plot(df['ep_num'].values, smooth_sim_time_large, color='tab:purple', label=str(large_window))
+    ax1.plot(df['ep_num'].values, smooth_sim_time_huge, color='tab:green', label=str(huge_window))
+    ax1.plot(df['ep_num'].values, sim_time, '--', alpha=0.3, color='tab:blue')
+
+    # graph std tolerance
+    polygon = Polygon(std_poly_min_dst, True, label='Std')
+    bp = [polygon]
+
+    p = PatchCollection(bp, alpha=0.2)
+    p.set_color('tab:blue')
+    ax1.add_collection(p)
+
+    ax1.legend()
+    ax1.set_xlabel('Episode Number [-]')
+    ax1.set_ylabel('Time to Reach Desitination or Fail [s]')
+
+    ax2 = ax1.twinx()
+    ax2.plot(epsilon_schedule[:, 0], epsilon_schedule[:, 1], color='tab:olive')
+    ax2.set_ylabel('Epsilon Schedule', color='tab:olive')
+    ax2.set_ylim([0, 1])
+
+    plt.savefig('..\\Output\\' + str(trial_group) + '\\' + str(
+        trial_number) + '\\Progress\\Graphs\\TimeToReachDestination.png')
+
     plt.close('all')
 
 def graph_evaluation_metrics():
@@ -275,6 +313,13 @@ def graph_evaluation_metrics():
     plt.savefig(
         '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\EvaluationReward.png')
 
+    fig = plt.figure(3, figsize=(14, 8))
+    ax1 = fig.add_subplot(111)
+    ax1.plot(df['EpNum'].values, df['simTime'].values)
+    ax1.set_xlabel('Episode Number')
+    ax1.set_ylabel('Time to Reach Goal [s]')
+    plt.savefig(
+        '..\\Output\\' + str(trial_group) + '\\' + str(trial_number) + '\\Progress\\Graphs\\EvaluationSimulationTime.png')
 
     plt.close()
 
@@ -284,8 +329,8 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPathDDPG'
-    trial_number = 11
+    trial_group = 'TuneDDPGPathControlSparseReward'
+    trial_number = 0
     window_size = 200
 
     small_window = 75

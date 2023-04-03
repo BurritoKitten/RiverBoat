@@ -263,9 +263,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPathDDPG'
-    trial_number = 9
-    episodes = range(9975,10000)
+    trial_group = 'DebuggingDirectControlDDPG'
+    trial_number = 8
+    episodes = range(300,305)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

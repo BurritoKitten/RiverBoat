@@ -34,10 +34,20 @@ class QNetwork(nn.Module):
         self.out = nn.Linear(int(layer_numbers[1]), action_size, device=device)
 
         # interim activation
-        if h_params['learning_algorithm']['activation'] == 'relu':
-            self.active = torch.nn.ReLU()
+        if h_params['learning_algorithm']['activation'] == 'elu':
+            self.active = torch.nn.ELU()
         elif h_params['learning_algorithm']['activation'] == 'leaky_relu':
             self.active = torch.nn.LeakyReLU()
+        elif h_params['learning_algorithm']['activation'] == 'relu':
+            self.active = torch.nn.ReLU()
+        elif h_params['learning_algorithm']['activation'] == 'selu':
+            self.active = torch.nn.SELU()
+        elif h_params['learning_algorithm']['activation'] == 'sigmoid':
+            self.active = torch.nn.Sigmoid()
+        elif h_params['learning_algorithm']['activation'] == 'silu':
+            self.active = torch.nn.SiLU()
+        elif h_params['learning_algorithm']['activation'] == 'tanh':
+            self.active = torch.nn.Tanh()
         else:
             raise ValueError('Not supported activation function')
 
@@ -79,7 +89,23 @@ class ActorNetwork(nn.Module):
         self.out = nn.Linear(int(layer_numbers[1]), action_size, device=device)
 
         # interim activation
-        self.active = torch.nn.ReLU()
+        if h_params['learning_algorithm']['actor_activation'] == 'elu':
+            self.active = torch.nn.ELU()
+        elif h_params['learning_algorithm']['actor_activation'] == 'leaky_relu':
+            self.active = torch.nn.LeakyReLU()
+        elif h_params['learning_algorithm']['actor_activation'] == 'relu':
+            self.active = torch.nn.ReLU()
+        elif h_params['learning_algorithm']['actor_activation'] == 'selu':
+            self.active = torch.nn.SELU()
+        elif h_params['learning_algorithm']['actor_activation'] == 'sigmoid':
+            self.active = torch.nn.Sigmoid()
+        elif h_params['learning_algorithm']['actor_activation'] == 'silu':
+            self.active = torch.nn.SiLU()
+        elif h_params['learning_algorithm']['actor_activation'] == 'tanh':
+            self.active = torch.nn.Tanh()
+        else:
+            raise ValueError('Not supported activation function')
+        #self.active = torch.nn.ReLU()
 
         #
         self.out_active = torch.nn.Tanh()
@@ -124,7 +150,23 @@ class CriticNetwork(nn.Module):
         self.out = nn.Linear(int(layer_numbers[1]), 1, device=device)
 
         # interim activation
-        self.active = torch.nn.ReLU()
+        if h_params['learning_algorithm']['critic_activation'] == 'elu':
+            self.active = torch.nn.ELU()
+        elif h_params['learning_algorithm']['critic_activation'] == 'leaky_relu':
+            self.active = torch.nn.LeakyReLU()
+        elif h_params['learning_algorithm']['critic_activation'] == 'relu':
+            self.active = torch.nn.ReLU()
+        elif h_params['learning_algorithm']['critic_activation'] == 'selu':
+            self.active = torch.nn.SELU()
+        elif h_params['learning_algorithm']['critic_activation'] == 'sigmoid':
+            self.active = torch.nn.Sigmoid()
+        elif h_params['learning_algorithm']['critic_activation'] == 'silu':
+            self.active = torch.nn.SiLU()
+        elif h_params['learning_algorithm']['critic_activation'] == 'tanh':
+            self.active = torch.nn.Tanh()
+        else:
+            raise ValueError('Not supported activation function')
+        #self.active = torch.nn.ReLU()
 
     def forward(self, z):
         """
@@ -305,7 +347,7 @@ class DQN(LearningAlgorithms):
 
 class DDPG(LearningAlgorithms):
 
-    def __init__(self, action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, tau, n_batches, batch_size, device, optimizer_settings, max_action_val):
+    def __init__(self, action_size, activation, h_params, last_activation, actor_layer_numbers, critic_layer_numbers, loss, state_size, tau, n_batches, batch_size, device, optimizer_settings, max_action_val):
         """
         The agent uses DDPG for the agent
 
@@ -317,22 +359,22 @@ class DDPG(LearningAlgorithms):
         :param state_size: the number of inputs for the neural network
         :return:
         """
-        super().__init__(action_size, activation, h_params, last_activation, layer_numbers, loss, state_size, n_batches, batch_size, device)
+        super().__init__(action_size, activation, h_params, last_activation, actor_layer_numbers, loss, state_size, n_batches, batch_size, device)
 
         self.name = 'DDPG'
         self.tau = tau
 
         # actor network
 
-        self.actor_policy_net = ActorNetwork(action_size, h_params, layer_numbers, state_size, device, max_action_val)
-        self.actor_target_net = ActorNetwork(action_size, h_params,  layer_numbers,  state_size, device, max_action_val)
+        self.actor_policy_net = ActorNetwork(action_size, h_params, actor_layer_numbers, state_size, device, max_action_val)
+        self.actor_target_net = ActorNetwork(action_size, h_params,  actor_layer_numbers,  state_size, device, max_action_val)
         self.actor_target_net.load_state_dict(self.actor_policy_net.state_dict())
         self.actor_target_net.eval()
 
         # critic network
-        self.critic_net = CriticNetwork(action_size, h_params,  layer_numbers, state_size, device)
+        self.critic_net = CriticNetwork(action_size, h_params,  critic_layer_numbers, state_size, device)
             #Critic(state_size, action_size, h_params).cuda()
-        self.critic_target_net = CriticNetwork(action_size, h_params, layer_numbers, state_size, device)
+        self.critic_target_net = CriticNetwork(action_size, h_params, critic_layer_numbers, state_size, device)
         self.critic_target_net.load_state_dict(self.critic_net.state_dict())
         self.critic_target_net.eval()
 

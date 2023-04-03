@@ -260,13 +260,15 @@ class DirectControlActionDiscrete(ActionOperation):
 
 class DirectControlActionContinous(ActionOperation):
 
-    def __init__(self, name, max_propeller, max_power, epsilon_schedule=None):
+    def __init__(self, name, max_propeller, max_power, action_sigma, epsilon_schedule=None):
         """
         is a class that converts a neural networks outputs to a change in a boats propeller angle and power value
 
         :param name: a string of the action used to help with debuging
         :param max_propeller: the maximum turning value of the propeller [rad/s]
         :param max_power: the maximum power change value of the propeller [watt/s]
+        :param action_sigma: the standard deviation amount to use to sample a random action when a random action is
+            required
         """
         super().__init__(name)
 
@@ -277,6 +279,8 @@ class DirectControlActionContinous(ActionOperation):
         else:
             self.max_power = float(max_power)
             self.action_size = self.get_action_size()
+
+        self.action_sigma = action_sigma
 
         # parse the epsilon greedy schedule
         self.epsilon_schedule = []
@@ -323,7 +327,7 @@ class DirectControlActionContinous(ActionOperation):
         if sample < eps_threshold and not is_evaluation:
             # add noise to the action
             #sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
-            sigma = self.max_propeller/ 1.645
+            sigma = self.max_propeller/ self.action_sigma#1.645
             #sigma = np.reshape(sigma, len(sigma[0]))
             base_random = action_np + np.random.normal(0, sigma, size=self.action_size)
             # base_random = action_tensor + sigma*torch.randn(self.action_size).cuda()
@@ -549,7 +553,7 @@ class PathActionOperation(ActionOperation):
 
 class PathContinousCp(PathActionOperation):
 
-    def __init__(self, name, replan_rate,controller, angle_range, power_range=None, num_control_point=4, epsilon_schedule=None, segment_length=10):
+    def __init__(self, name, replan_rate,controller, angle_range, action_sigma, power_range=None, num_control_point=4, epsilon_schedule=None, segment_length=10):
         """
         creates paths a regular intervals by a number of control points. The control points are used to generate a
         path as a b spline. Each control point is relative from the last segments vector
@@ -567,6 +571,7 @@ class PathContinousCp(PathActionOperation):
         self.controller = controller  # controller object to keep the agent on the path
         angle_range = angle_range.split(',')
         self.angle_range = [np.deg2rad(float(i)) for i in angle_range]
+        self.action_sigma = action_sigma
         #self.max_propeller = np.abs(self.angle_range[0])
 
         if power_range == 'None':
@@ -653,7 +658,7 @@ class PathContinousCp(PathActionOperation):
                     # sigma = self.actor_policy_net.max_action.cpu().detach().numpy() / 1.645
 
                     #sigma = self.max_propeller / 1.645
-                    sigma = np.abs(self.angle_range[0])/1.645
+                    sigma = np.abs(self.angle_range[0])/self.action_sigma#1.645
                     # sigma = np.reshape(sigma, len(sigma[0]))
                     base_random = tmp_angle + np.random.normal(0, sigma, size=1)[0]
                     # base_random = action_tensor + sigma*torch.randn(self.action_size).cuda()

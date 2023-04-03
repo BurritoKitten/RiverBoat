@@ -780,6 +780,7 @@ class Environment(ABC):
                                                 replan_rate=self.h_params['action_description']['replan_rate'],
                                                 controller=controller,
                                                 angle_range=self.h_params['action_description']['angle_range'],
+                                                action_sigma=self.h_params['action_description']['action_sigma'],
                                                 power_range=self.h_params['action_description']['power_range'],
                                                  num_control_point=2,
                                                  epsilon_schedule=self.h_params['action_description']['eps_schedule'],
@@ -791,6 +792,7 @@ class Environment(ABC):
                                                                  'max_action'],
                                                              max_power=self.h_params['action_description'][
                                                                  'max_power'],
+                                                              action_sigma=self.h_params['action_description']['action_sigma'],
                                                               epsilon_schedule=self.h_params['action_description']['eps_schedule'])
         elif action_type == 'discrete' and action_designation == 'canned':
             # used discrete canned paths
@@ -890,21 +892,32 @@ class Environment(ABC):
 
         settings = self.h_params['learning_algorithm']
 
-        activation = settings['activation']
+
         last_activation = settings['last_activation']
-        layer_numbers = settings['layers']
-        layer_numbers = layer_numbers.split(',')
-        layer_numbers = [float(i) for i in layer_numbers]
+
         loss = settings['loss']
         n_batches = settings['n_batches']
         batch_size = settings['batch_size']
         device = 'cuda'
 
         if settings['name'] == 'DQN':
+            activation = settings['activation']
+            layer_numbers = settings['layers']
+            layer_numbers = layer_numbers.split(',')
+            layer_numbers = [float(i) for i in layer_numbers]
             la = LearningAlgorithms.DQN(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size,n_batches, batch_size, device, optimizer_settings)
         elif settings['name'] == 'DDPG':
             max_action_val = np.deg2rad(np.abs(np.float(self.h_params['action_description']['angle_range'].split(',')[0])))
-            la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings, max_action_val)
+            activation = settings['actor_activation']
+            actor_layer_numbers = settings['actor_layers']
+            actor_layer_numbers = actor_layer_numbers.split(',')
+            actor_layer_numbers = [float(i) for i in actor_layer_numbers]
+
+            critic_layer_numbers = settings['actor_layers']
+            critic_layer_numbers = critic_layer_numbers.split(',')
+            critic_layer_numbers = [float(i) for i in critic_layer_numbers]
+
+            la = LearningAlgorithms.DDPG(action_size, activation, self.h_params, last_activation, actor_layer_numbers, critic_layer_numbers, loss, state_size, settings['tau'], n_batches, batch_size, device, optimizer_settings, max_action_val)
         else:
             raise ValueError('Learning algorithm currently not supported')
 

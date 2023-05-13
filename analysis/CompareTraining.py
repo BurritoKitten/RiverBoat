@@ -78,10 +78,10 @@ def graphComparisons(exps):
 
         # plot eval progress with respect to number of samples generated in simulation
         eval_avg_df['NumSamples'] = eval_avg_df['EpNum'].values*samples_per_episode
-        ax2_1.plot(eval_avg_df['NumSamples'].values,eval_avg_df['successRate'], label=exp['label'])
-        ax2_2.plot(eval_avg_df['NumSamples'].values, eval_avg_df['avgMinDst'], label=exp['label'])
-        ax2_3.plot(eval_avg_df['NumSamples'].values, eval_avg_df['avgCumReward'], label=exp['label'])
-        ax2_4.plot(eval_avg_df['NumSamples'].values, eval_avg_df['simTime'], label=exp['label'])
+        ax2_1.semilogx(eval_avg_df['NumSamples'].values,eval_avg_df['successRate'], label=exp['label'])
+        ax2_2.semilogx(eval_avg_df['NumSamples'].values, eval_avg_df['avgMinDst'], label=exp['label'])
+        ax2_3.semilogx(eval_avg_df['NumSamples'].values, eval_avg_df['avgCumReward'], label=exp['label'])
+        ax2_4.semilogx(eval_avg_df['NumSamples'].values, eval_avg_df['simTime'], label=exp['label'])
 
         # plot eval progress with respect to number of data points seen by the network
         eval_avg_df['NumSamples'] = eval_avg_df['EpNum'].values * samples_seen_by_network_per_episode
@@ -103,8 +103,11 @@ def graphComparisons(exps):
     ax1_4.set_ylabel('Average Time to Reach Destination (or Fail) [s]')
     ax1_4.set_xlabel('Episode Number [-]')
     ax1_4.legend()
+    fig_1.tight_layout()
 
     fig_2.suptitle('Average Rate for Evaluation Episodes W.R.T. Number of Samples')
+    ax2_1.grid(b=True, which='major', color='w', linewidth=1.0)
+    ax2_1.grid(b=True, which='minor', color='w', linewidth=0.5)
     ax2_1.set_ylabel('Success Rate [-]')
     ax2_1.set_xlabel('Number of Samples Generated [-]')
     ax2_1.legend()
@@ -117,6 +120,7 @@ def graphComparisons(exps):
     ax2_4.set_ylabel('Average Time to Reach Destination (or Fail) [s]')
     ax2_4.set_xlabel('Number of Samples Generated [-]')
     ax2_4.legend()
+    fig_2.tight_layout()
 
     fig_3.suptitle('Average Rate for Evaluation Episodes W.R.T. Number of Samples Seen by Neural Networks')
     ax3_1.set_ylabel('Success Rate [-]')
@@ -131,6 +135,7 @@ def graphComparisons(exps):
     ax3_4.set_ylabel('Average Time to Reach Destination (or Fail) [s]')
     ax3_4.set_xlabel('Number of Samples Seen By Agents [-]')
     ax3_4.legend()
+    fig_3.tight_layout()
 
     plt.show()
 
@@ -142,17 +147,26 @@ if __name__ == '__main__':
     # add a dictionary that describes the training set one wants use and add it to the total list of training scenarios
     experiments_to_compare = []
 
-    exp_1 = {"trial_group" :'DebuggingPathDDPG', "trial_number" : 12, "label": "DDPG_Path_Control"}
+    exp_1 = {"trial_group" :'DebuggingPathDDPG', "trial_number" : 12, "label": "DDPG_PC"}
     experiments_to_compare.append(exp_1)
 
-    exp_2 = {"trial_group" :'DebuggingDirectControlDDPG', "trial_number" : 9, "label": "DDPG_Direct_Control"}
+    exp_2 = {"trial_group" :'DebuggingDirectControlDDPG', "trial_number" : 9, "label": "DDPG_DC"}
     experiments_to_compare.append(exp_2)
 
-    exp_3 = {"trial_group": 'DebuggingDirectControlDQN', "trial_number": 3, "label": "DQN_Direct_Control"}
+    exp_3 = {"trial_group": 'DebuggingDirectControlDQN', "trial_number": 3, "label": "DQN_DC"}
     experiments_to_compare.append(exp_3)
 
-    exp_4 = {"trial_group": 'DebuggingPath', "trial_number": 8, "label": "DQN_Path_Control"}
+    exp_4 = {"trial_group": 'DebuggingPath', "trial_number": 8, "label": "DQN_PC"}
     experiments_to_compare.append(exp_4)
+
+    '''
+    exp_5 = {"trial_group": 'TuneDDPGPathControlSparseReward', "trial_number": 0, "label": "DDPG_PC_Sparse"}
+    experiments_to_compare.append(exp_5)
+
+    exp_6 = {"trial_group": 'TuneDDPGDirectControlSparseReward', "trial_number": 1,
+             "label": "DDPG_DC_Sparse"}
+    experiments_to_compare.append(exp_6)
+    '''
 
     # edit this section
     # -----------------------------

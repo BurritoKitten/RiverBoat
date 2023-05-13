@@ -1,5 +1,6 @@
 action_description:
   action_designation: control_point
+  action_sigma: 1.645
   action_type: continous
   angle_range: -60,60
   power_range: None
@@ -10,18 +11,19 @@ controller:
   coeffs: 0.1,0.5
   type: pd
 learning_algorithm:
-  activation: relu
-  batch_size: 256
+  actor_activation: elu
+  critic_activation: elu
+  batch_size: 512 #256
   drop_out: 0.0
-  gamma: 0.9
+  gamma: 0.99
   last_activation: tan_h
-  layers: 32,32
+  actor_layers: 32,32
+  critic_layers: 32,32
   loss: mse
   n_batches: 32
   name: DDPG
   target_frequency: 100
   tau: 0.05
-logdata: null
 movers:
   river_boat_0:
     use_default: True
@@ -39,6 +41,9 @@ movers:
       v_xp: num, 5.0, linear # [m/s]
       v_yp: num, 5.0, linear # [m/s]
     is_agent: True
+  #static_circle_0:
+  #  radius: 20.0
+  #  is_agent: False
 optimizer:
   beta_1: 0.9
   beta_2: 0.999
@@ -47,34 +52,64 @@ optimizer:
 replay_data:
   capacity: 100000
   replay_strategy: all_in_one
-reward_function:
-  crash: -100.0
-  goal_dst: 5.0
-  name: MultiStepCrashSuccessReward
-  success: 1000.0
+  #replay_strategy: outcome
+  #success_fraction: 0.3
+  #crash_fraction: 0.3
+
 #reward_function:
+#  crash: -100.0
 #  goal_dst: 5.0
-#  name: MultiStepSuccessReward
-#  success: 10.0
+#  name: MultiStepCrashSuccessReward
+#  success: 1000.0
+reward_function:
+  goal_dst: 5.0
+  name: MultiStepSuccessReward #MultiStepCrashSuccessReward
+  success: 1.0
+  #crash: -0.5
+  total_norm_factor: 1.0
 scenario:
   evaluation_frequency: 100
   continue_learning: false
   domain: 200
-  experiment_set: DebuggingPathDDPG
+  experiment_set: TuneDDPGPathControlSparseReward
   max_time: 160
-  name: no_obstacles
+  name: one_obstacles
   num_episodes: 10001
   seed: 0
   time_step: 0.1
-  trial_num: 11
+  trial_num: 15
+#sensors:
+#  lidar_1:
+#    base_range: 0.0
+#    base_theta: 0.0
+#    install_on: river_boat_0
+#    max_range: num, 100.0, linear
+#    max_theta: num, 6.283185307179586, linear
+
+#evaluation_init:
+#  destination_x: 180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180,180
+#  destination_y: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+#  river_boat_0:
+#    x_pos: 25,25,25,25,25,25,25,25,250,250,250,250,250,250,250,250,75,75,75,75,75,75,75,75
+#    y_pos: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,0,0,0,0,0,0,0,0
+#    psi: 0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144
+#    psi_dot: 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0
+#    v_xp: 0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5
+#    v_yp: 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0
+#    delta: 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0
+#  static_circle_0:
+#    x_pos: 100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0
+#    y_pos: 100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0
+
+# no obstacle init
 evaluation_init:
   destination_x: 150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150
   destination_y: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
   river_boat_0:
-    x_pos: 25,25,25,25,25,25,25,25,100,100,100,100,100,100,100,100,140,140,140,140,140,140,140,140
-    y_pos: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+    delta: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     psi: 0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144,0,0.785398163,1.570796327,2.35619449,3.141592654,3.926990817,4.71238898,5.497787144
     psi_dot: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     v_xp: 0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5
     v_yp: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    delta: 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    x_pos: 25,25,25,25,25,25,25,25,100,100,100,100,100,100,100,100,140,140,140,140,140,140,140,140
+    y_pos: 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100

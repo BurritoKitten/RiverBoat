@@ -1,7 +1,7 @@
 action_description:
   action_designation: control_point
   action_type: discrete
-  angle_values: -60,-30,0,30,60
+  angle_values: -60,-45,-30,-15,0,15,30,45,60
   eps_schedule: 0,0.9;8000,0.2
   power_values: None
   replan_rate: 20.0
@@ -15,7 +15,7 @@ learning_algorithm:
   drop_out: 0.0
   gamma: 0.9
   last_activation: linear
-  layers: 32,32
+  layers: 16,16
   loss: huber
   n_batches: 32
   name: DQN
@@ -55,13 +55,13 @@ scenario:
   evaluation_frequency: 100
   continue_learning: false
   domain: 200
-  experiment_set: DebuggingPath
+  experiment_set: TuneDQNPathControlRichReward
   max_time: 160
   name: one_circle_obstacles
-  num_episodes: 12001
+  num_episodes: 10001
   seed: 0
   time_step: 0.1
-  trial_num: 7
+  trial_num: 0
 #sensors:
 #  lidar_1:
 #    base_range: 0.0

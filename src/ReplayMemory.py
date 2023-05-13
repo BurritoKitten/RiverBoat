@@ -25,7 +25,7 @@ def convert_numpy_to_tensor(device, arr):
 
 class ReplayStorage:
 
-    def __init__(self, capacity, extra_fields, strategy):
+    def __init__(self, capacity, extra_fields, strategy, h_params):
         """
 
 
@@ -36,6 +36,7 @@ class ReplayStorage:
         # save the hyperparameters
         #self.h_params = h_params
         self.strategy = strategy
+        self.h_params = h_params
         self.transition = None
         self.set_transition(extra_fields)
         self.capacity = capacity
@@ -231,7 +232,7 @@ class ReplayStorage:
                 # there is not enough data in both buffers to complete one batch
                 return None
 
-            n_close = int(np.floor(self.h_params['replay_data']['close_fraction']*float(batch_size)))
+            n_close = int(np.floor(self.h_params['close_fraction']*float(batch_size)))
             n_far = batch_size - n_close
 
             enough_close = False
@@ -303,8 +304,8 @@ class ReplayStorage:
                 # there is not enough data in all of the buffers to complete one batch
                 return None
 
-            n_success = int(np.floor(self.h_params['replay_data']['success_fraction']*float(batch_size)))
-            n_crash = int(np.floor(self.h_params['replay_data']['crash_fraction']*float(batch_size)))
+            n_success = int(np.floor(self.h_params['success_fraction']*float(batch_size)))
+            n_crash = int(np.floor(self.h_params['crash_fraction']*float(batch_size)))
             n_other = batch_size - n_crash - n_success
 
             enough_success = False

@@ -211,21 +211,22 @@ class AnimateEpisode:
                         color='tab:blue')
 
                 # draw the destination
-                circle_destination = plt.Circle((df['destination_x'][max_idx], df['destination_y'][max_idx]), 5.0, color='tab:green',alpha=0.2,label='Destination')
-                ax1.add_patch(circle_destination)
-
-                # draw the obstacles
-                obstacles = [name for name in df.columns if 'static_circle' in name]
-                unique_obs = []
-                for obs in obstacles:
-                    parts = obs.split('_')
-                    if int(parts[2]) not in unique_obs:
-                        unique_obs.append(int(parts[2]))
-                for part in unique_obs:
-                    circle_destination = plt.Circle(
-                        (df['static_circle_'+str(part)+'_x'][max_idx], df['static_circle_'+str(part)+'_y'][max_idx]), 10.0,
-                        color='tab:red', alpha=0.2, label='Obstacle')
+                if k == 0:
+                    circle_destination = plt.Circle((df['destination_x'][max_idx], df['destination_y'][max_idx]), 5.0, color='tab:green',alpha=0.2,label='Destination')
                     ax1.add_patch(circle_destination)
+
+                    # draw the obstacles
+                    obstacles = [name for name in df.columns if 'static_circle' in name]
+                    unique_obs = []
+                    for obs in obstacles:
+                        parts = obs.split('_')
+                        if int(parts[2]) not in unique_obs:
+                            unique_obs.append(int(parts[2]))
+                    for part in unique_obs:
+                        circle_destination = plt.Circle(
+                            (df['static_circle_'+str(part)+'_x'][max_idx], df['static_circle_'+str(part)+'_y'][max_idx]), 20.0,
+                            color='tab:gray', alpha=0.2, label='Obstacle')
+                        ax1.add_patch(circle_destination)
 
                 #ax1.legend()
                 ax1.set_xlim([min_x,max_x])
@@ -276,9 +277,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPathDDPG'
-    trial_number = 11
-    episodes = [1500, 2000]  # min and max values
+    trial_group = 'TuneDDPGPathControlSparseRewardOneObstacle'
+    trial_number = 6
+    episodes = [7500, 7501]  # min and max values
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

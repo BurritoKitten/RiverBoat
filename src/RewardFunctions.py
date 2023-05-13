@@ -47,6 +47,14 @@ def select_reward_function(h_params, ao):
 
         reward_func = InstantStepHeadingCrashSuccessReward(delta_t, crash_reward, success_reward, heading_reward, close_reward_factor, angle_tolerance, angle_in_tolerance_reward,total_norm_factor, goal_dst)
 
+    elif reward_info['name'] == 'InstantSuccessReward':
+
+        success_reward = reward_info['success']
+        crash_reward = reward_info['crash']
+        goal_dst = reward_info['goal_dst']
+        total_norm_factor = reward_info['total_norm_factor']
+        reward_func = InstantSuccessReward(success_reward, crash_reward, total_norm_factor, goal_dst)
+
     elif reward_info['name'] == 'MultiStepSuccessReward':
 
         refresh_rate = ao.replan_rate
@@ -62,8 +70,9 @@ def select_reward_function(h_params, ao):
         crash_reward = reward_info['crash']
         success_reward = reward_info['success']
         goal_dst = reward_info['goal_dst']
+        total_norm_factor = reward_info['total_norm_factor']
 
-        reward_func = MultiStepCrashSuccessReward(crash_reward, refresh_rate, success_reward, goal_dst)
+        reward_func = MultiStepCrashSuccessReward(crash_reward, refresh_rate, success_reward, total_norm_factor, goal_dst)
     else:
         raise ValueError("The reward function selected is currently not supported. Please check the spelling or define a new function.")
 
@@ -303,6 +312,76 @@ class InstantStepHeadingCrashSuccessReward(RewardFunction):
         self.is_terminal = False
 
 
+class InstantSuccessReward(RewardFunction):
+
+    def __init__(self,  success_reward, crash_reward, total_norm_factor, goal_dst):
+        """
+        A simple reward function that gets reward for succeeding
+
+        :param success_reward: the reward for reaching a success state
+        :param goal_dst: the distance where a boat is considered to have reached its goal
+        """
+        super().__init__("InstantSuccessReward", goal_dst)
+
+        self.crash_reward = crash_reward
+        self.success_reward = success_reward
+        self.total_norm_factor = total_norm_factor
+
+    def get_reward(self, t, mover_dict):
+        """
+        calculate the reward for the current step. Also set if the simulation is completed.
+        :param t: time
+        :param mover_dict: dictionary containing all of the mover information
+        :return:
+        """
+        self.is_crashed = False
+        self.is_success = False
+        reward = 0.0
+
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # this is the river boat
+
+                if mover.state_dict['dest_dist'] < self.goal_dist:
+                    self.is_terminal = True
+                    self.is_success = True
+                    reward += self.success_reward
+
+                # check if crashed
+                min_dst = np.infty
+                for sensor in mover.sensors:
+                    raw = sensor.get_raw_measurements()
+                    raw_keys = raw.keys()
+                    dst_key = [key for key in raw_keys if 'dist' in key][0]
+                    if raw[dst_key] < min_dst:
+                        min_dst = raw[dst_key]
+
+                # check if minimum distance is less than size of any obstacles
+                for tmp_name, tmp_mover in mover_dict.items():
+                    if tmp_name != name:
+                        # not the same mover. Calculations currently only support circle obstacles
+                        if tmp_mover.state_dict['radius'] >= min_dst:
+                            # boat has crashed
+                            self.is_terminal = True
+                            self.is_crashed = True
+                            reward += self.crash_reward
+
+
+        return reward / self.total_norm_factor
+
+    def reset(self, mover_dict):
+        """
+        Reset the old distance so the reward function can determine if the step reduced the distance to the goal.
+        :param mover_dict:
+        :return:
+        """
+
+        # reset the flags for tracking states
+        self.is_crashed = False
+        self.is_success = False
+        self.is_terminal = False
+
+
 class MultiStepReward(RewardFunction):
 
     def __init__(self, name, refresh_rate, goal_dst):
@@ -318,9 +397,9 @@ class MultiStepReward(RewardFunction):
         self.cumulative_reward = 0.0
 
 
-class MultiStepCrashSuccessReward(MultiStepReward):
+class MultiStepCrashSuccessCloserHeadingReward(MultiStepReward):
 
-    def __init__(self, crash_reward, refresh_rate, success_reward, goal_dst):
+    def __init__(self, crash_reward, refresh_rate, success_reward, total_norm_factor, goal_dst):
         """
         A simple reward function that gets reward for succeeding and crashing. The only other reward is if the boat
         closes the distance to the destination
@@ -330,10 +409,11 @@ class MultiStepCrashSuccessReward(MultiStepReward):
         :param success_reward: the reward for reaching a success state
         :param goal_dst: the distance where a boat is considered to have reached its goal
         """
-        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
+        super().__init__(name='MultiStepCrashSuccessCloserHeadingReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
 
         self.crash_reward = crash_reward
         self.success_reward = success_reward
+        self.total_norm_factor = total_norm_factor
 
     def get_reward(self, t, mover_dict):
         """
@@ -389,7 +469,7 @@ class MultiStepCrashSuccessReward(MultiStepReward):
             reward = self.cumulative_reward
             self.cumulative_reward = 0.0
 
-        return reward/100.0
+        return reward/ self.total_norm_factor
 
     def reset(self, mover_dict):
         """
@@ -412,6 +492,81 @@ class MultiStepCrashSuccessReward(MultiStepReward):
         self.cumulative_reward = 0.0
 
 
+class MultiStepCrashSuccessReward(MultiStepReward):
+
+    def __init__(self, crash_reward, refresh_rate, success_reward, total_norm_factor, goal_dst):
+        """
+        A simple reward function that gets reward for succeeding and crashing. The only other reward is if the boat
+        closes the distance to the destination
+
+        :param crash_reward: the reward for crashing the boat
+        :param refresh_rate: the rate at which a new agent action is choosen at
+        :param success_reward: the reward for reaching a success state
+        :param goal_dst: the distance where a boat is considered to have reached its goal
+        """
+        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
+
+        self.crash_reward = crash_reward
+        self.success_reward = success_reward
+        self.total_norm_factor = total_norm_factor
+
+    def get_reward(self, t, mover_dict):
+        """
+        calculate the reward for the current step. Also set if the simulation is completed.
+        :param t: time
+        :param mover_dict: dictionary containing all of the mover information
+        :return:
+        """
+        self.is_crashed = False
+        self.is_success = False
+
+        for name, mover in mover_dict.items():
+            if mover.can_learn:
+                # this is the river boat
+
+                if mover.state_dict['dest_dist'] < self.goal_dist:
+                    self.is_terminal = True
+                    self.is_success = True
+                    self.cumulative_reward += self.success_reward
+
+                # check if minimum distance is less than size of any obstacles
+                for tmp_name, tmp_mover in mover_dict.items():
+                    if tmp_name != name:
+                        # not the same mover. Calculations currently only support circle obstacles
+                        tmp_dst = np.sqrt( (tmp_mover.state_dict['x_pos']-mover.state_dict['x_pos'])**2 + (tmp_mover.state_dict['y_pos']-mover.state_dict['y_pos'])**2)
+                        if tmp_mover.state_dict['radius'] >= tmp_dst:
+                            # boat has crashed
+                            self.is_terminal = True
+                            self.is_crashed = True
+                            self.cumulative_reward += self.crash_reward
+
+
+        # check if the agent step has fully taken place
+        reward = 0.0
+        if (t-self.last_reward_time) >= self.refresh_rate or self.is_terminal:
+
+            # reset step tracking information
+            self.last_reward_time = t
+            reward = self.cumulative_reward
+            self.cumulative_reward = 0.0
+
+        return reward/ self.total_norm_factor
+
+    def reset(self, mover_dict):
+        """
+        Reset the old distance so the reward function can determine if the step reduced the distance to the goal.
+        :param mover_dict:
+        :return:
+        """
+
+        # reset the flags for tracking states
+        self.is_crashed = False
+        self.is_success = False
+        self.is_terminal = False
+        self.last_reward_time = 0.0
+        self.cumulative_reward = 0.0
+
+
 class MultiStepSuccessReward(MultiStepReward):
 
     def __init__(self, refresh_rate, success_reward, total_norm_factor, goal_dst):
@@ -423,7 +578,7 @@ class MultiStepSuccessReward(MultiStepReward):
         :param success_reward: the reward for reaching a success state
         :param goal_dst: the distance where a boat is considered to have reached its goal
         """
-        super().__init__(name='MultiStepCrashSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
+        super().__init__(name='MultiStepSuccessReward', refresh_rate=refresh_rate, goal_dst=goal_dst)
 
         self.success_reward = success_reward
         self.total_norm_factor = total_norm_factor

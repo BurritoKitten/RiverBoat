@@ -1,22 +1,25 @@
 action_description:
   action_designation: direct
+  action_sigma: 1.645
   action_type: continous
-  eps_schedule: 0,0.9;400,0.2
+  eps_schedule: 0,0.9;8000,0.2
   max_power: None
   angle_range: -15,15
 controller:
   coeffs: 0.1,0.5
   type: pd
 learning_algorithm:
-  activation: relu
-  batch_size: 2048
+  actor_activation: relu
+  critic_activation: relu
+  batch_size: 8192
   drop_out: 0.0
-  gamma: 0.9
+  gamma: 0.999375 # horizon = 1600 steps
   last_activation: tan_h
-  layers: 60,60
+  actor_layers: 60,60
+  critic_layers: 60,60
   loss: mse
   max_action: 10
-  n_batches: 100
+  n_batches: 16
   name: DDPG
   target_frequency: 10
   tau: 0.05
@@ -47,21 +50,34 @@ replay_data:
   capacity: 100000
   replay_strategy: all_in_one
 reward_function:
+  angle_in_tolerance_reward: 1.0
+  angle_tolerance: 5.0
+  close_reward_factor: 1.0
   crash: -100.0
   goal_dst: 5.0
+  heading_reward: 0.075
   name: EveryStepForGettingCloserToGoalAndHeading
   success: 100.0
+  total_norm_factor: 100.0
+#reward_function:
+#  goal_dst: 5.0
+#  name: InstantSuccessReward
+#  success: 1.0
+#  crash: -1.0
+#  total_norm_factor: 1.0
 scenario:
-  evaluation_frequency: 25
+  evaluation_frequency: 100
   continue_learning: false
   domain: 200
-  experiment_set: DebuggingDirectControlDDPG
+  experiment_set: TuneDDPGDirectControlRichReward
   max_time: 150
   name: no_obstacles
-  num_episodes: 500
+  num_episodes: 10001
   seed: 0
   time_step: 0.1
-  trial_num: 7
+  trial_num: 1
+  save_training_telemetry: False
+  save_freq: 1
 
 evaluation_init:
   destination_x: 150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150

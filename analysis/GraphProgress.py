@@ -330,7 +330,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
     trial_group = 'TuneDDPGPathControlSparseReward'
-    trial_number = 0
+    trial_number = 2
     window_size = 200
 
     small_window = 75

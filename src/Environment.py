@@ -100,7 +100,7 @@ class Environment(ABC):
                 # reset the static circle
                 max_dst_to_other = 0.0
                 dst_to_dest = 0.0
-                while dst_to_dest*2.0 <= mover.state_dict['radius'] and max_dst_to_other*2.0 <= mover.state_dict['radius']:
+                while dst_to_dest <= mover.state_dict['radius']*2.0 and max_dst_to_other <= mover.state_dict['radius']*2.0:
                     # draw random positions for the obstacle until it is not too close to the goal location or any other
                     # movers
 
@@ -180,7 +180,8 @@ class Environment(ABC):
                 for i, variable in enumerate(self.evaluation_info.columns):
 
                     if 'static_circle' in variable:
-                        mover.state_dict[variable] = self.evaluation_info[variable].iloc[row_idx]
+                        var = variable.split("-")[1]
+                        mover.state_dict[var] = self.evaluation_info[variable].iloc[row_idx]
             else:
                 raise ValueError('Mover not currently supported')
 
@@ -218,12 +219,14 @@ class Environment(ABC):
         :return:
         """
 
+
         # reset environment
         if is_evaluation:
             # reset the initial conditions
             self.reset_evaluation_environment(evaluation_number, reset_to_max_power)
         else:
             self.reset_environment(reset_to_max_power)
+
 
         # reset the reward function
         self.reward_func.reset(self.mover_dict)
@@ -307,7 +310,16 @@ class Environment(ABC):
 
                 # store the data
                 if not is_evaluation:
-                    self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
+                    if self.replay_storage.strategy == 'outcome':
+                        outcome = 'other'
+                        if is_crashed:
+                            outcome = 'crash'
+                        elif is_success:
+                            outcome = 'success'
+
+                        self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor, outcome)
+                    else:
+                        self.replay_storage.push(state_tensor,action_tensor,next_state_tensor,reward_tensor,is_terminal_tensor)
 
                 # reset the state to None for the agents next step
                 reset_state = True
@@ -372,8 +384,11 @@ class Environment(ABC):
                 self.h_params['scenario']['trial_num']) + '//Evaluation//Data//History_' + str(ep_num) + '-'+str(eval_num)+'.csv'
             total_history.to_csv(file_name, index=False)
         else:
-            file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
-            total_history.to_csv(file_name, index=False)
+            if self.save_training_data and ep_num % self.save_freq == 0:
+                # only save the data to a csv if it is allowed and the episode number matches the goal. Ideally all of
+                # the data is saved, but there is no more room on my computer
+                file_name = 'Output//' + str(self.h_params['scenario']['experiment_set'])+ '//' + str(self.h_params['scenario']['trial_num'])+'//TrainingHistory//Data//History_'+str(ep_num)+'.csv'
+                total_history.to_csv(file_name, index=False)
 
     def step(self, ep_num, t, end_step, is_evaluation):
         """
@@ -570,6 +585,9 @@ class Environment(ABC):
         # parse the evaluation data
         self.get_evaluation_information()
 
+        # set data storage parameters
+        self.set_data_storage()
+
         # loop over training
         elapsed_episodes = 0
         num_episodes = self.h_params['scenario']['num_episodes']
@@ -584,14 +602,17 @@ class Environment(ABC):
         while elapsed_episodes < num_episodes:
 
             # check if evaluation episodes are to be rn
+
+
             if elapsed_episodes % self.h_params['scenario']['evaluation_frequency'] == 0 or elapsed_episodes == 0:
                 # run a suite of evaluation episodes
                 self.run_evaluation_set(elapsed_episodes, reset_to_max_power)
 
+
             # run the episode where training data is accumulated
             cumulative_reward, is_crashed, is_success, min_dst, total_episode_time = self.run_simulation(elapsed_episodes,is_evaluation=False, reset_to_max_power=reset_to_max_power)
 
-            print("Episode Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(elapsed_episodes, is_success, min_dst,
+            print("Episode Number={}\tSuccess={}\tCrash={}\tProximity={:.3f}\tReward={:.3f}".format(elapsed_episodes, is_success, is_crashed,min_dst,
                                                                                  cumulative_reward))
 
             # write episode history out to a file
@@ -933,7 +954,7 @@ class Environment(ABC):
 
         memory_info = self.h_params['replay_data']
 
-        self.replay_storage = ReplayMemory.ReplayStorage(capacity=memory_info['capacity'], extra_fields=[], strategy=memory_info['replay_strategy'])
+        self.replay_storage = ReplayMemory.ReplayStorage(capacity=memory_info['capacity'], extra_fields=[], strategy=memory_info['replay_strategy'], h_params=memory_info)
 
     def get_evaluation_information(self):
         """
@@ -993,7 +1014,7 @@ class Environment(ABC):
             # run the simulation in evaluation mode
             cumulative_reward, is_crashed, is_success, min_dst, total_episode_time = self.run_simulation(ep_num,is_evaluation=True,reset_to_max_power=reset_to_max_power,evaluation_number=i)
 
-            print("Evaluation Episode Number={}\tSet Number={}\tSuccess={}\tProximity={:.3f}\tReward={:.3f}".format(ep_num,i,is_success,min_dst,cumulative_reward))
+            print("Evaluation Episode Number={}\tSet Number={}\tSuccess={}\tCrash={}\tProximity={:.3f}\tReward={:.3f}".format(ep_num,i,is_success,is_crashed,min_dst,cumulative_reward))
 
             # save set numbers information
             crash_set.append(int(is_crashed))
@@ -1054,6 +1075,11 @@ class Environment(ABC):
         """
         with open("Output/"+str(self.h_params['scenario']['experiment_set'])+"/"+str(self.h_params['scenario']['trial_num'])+'/hyper_parameters.yaml', 'w') as file:
             yaml.safe_dump(self.h_params,file)
+
+    def set_data_storage(self):
+
+        self.save_training_data = self.h_params['scenario']['save_training_telemetry']
+        self.save_freq = self.h_params['scenario']['save_freq']
 
     @staticmethod
     def create_environment(file_name):

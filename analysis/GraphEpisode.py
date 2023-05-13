@@ -41,6 +41,10 @@ def graph_episode(k, df, trial_group, trial_number, file_name):
                             color='tab:green')
     ax1.add_patch(circle)
 
+    circle = patches.Circle((df['static_circle_0_x'].iloc[0], df['static_circle_0_y'].iloc[0]), radius=20.0, alpha=0.3,color='tab:gray')
+    ax1.add_patch(circle)
+
+
     sc = ax1.scatter(df['x_pos'], df['y_pos'], c=df['time'], cmap=cm.plasma, edgecolor='none')
     plt.colorbar(sc, ax=ax1)
     # get the points for each 20% of the trajectory
@@ -112,9 +116,9 @@ if __name__ == '__main__':
     # Edit this block to control what is rendered ----------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     # input controls.
-    trial_group = 'DebuggingPathDDPG'
-    trial_number = 8
-    episodes = range(9000, 10000)
+    trial_group = 'TuneDDPGPathControlSparseRewardOneObstacle'
+    trial_number = 0
+    episodes = range(965,975)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Edit this block to control what is rendered ----------------------------------------------------------------------

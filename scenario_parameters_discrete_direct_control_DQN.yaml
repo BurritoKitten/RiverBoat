@@ -1,12 +1,12 @@
 scenario:
   name: no_obstacles
-  num_episodes: 501
+  num_episodes: 1001
   evaluation_frequency: 25
   max_time: 160
   time_step: 0.1
   domain: 200
-  experiment_set: DebuggingDirectControlDQN
-  trial_num: 2
+  experiment_set: TuneDQNDirectControlRichReward
+  trial_num: 11
   continue_learning: False
   seed: 0
 movers:
@@ -33,8 +33,8 @@ learning_algorithm:
   name: DQN
   gamma: 0.9
   drop_out: 0.0
-  layers: 100,100
-  activation: relu #leaky_relu
+  layers: 16,16
+  activation: elu #leaky_relu
   last_activation: linear
   n_batches: 100
   batch_size: 2048
@@ -70,9 +70,9 @@ learning_algorithm:
 action_description:
   action_type: discrete
   action_designation: direct
-  propeller_values: -15,-5,0,5,15
+  propeller_values: -15,-5,-1,0,1,5,15
   power_values: None
-  eps_schedule: 0,0.9;400,0.2
+  eps_schedule: 0,0.9;800,0.2
 
 # continous direct actuator control
 #action_description:
@@ -81,10 +81,6 @@ action_description:
 #  max_propeller: -10,10
 #  max_power: None
 
-
-controller:
-  type: pd
-  coeffs: 0.1,0.5 # need to update these
 optimizer:
   name: ADAM
   learn_rate: 0.001
@@ -99,6 +95,11 @@ reward_function:
   success: 100.0
   crash: -100.0
   goal_dst: 5.0
+  heading_reward: 0.075
+  close_reward_factor: 1.0
+  angle_tolerance: 5.0 #[deg]
+  angle_in_tolerance_reward: 1.0
+  total_norm_factor: 100.0
 
 #sensors:
 #  lidar_1:
@@ -108,7 +109,9 @@ reward_function:
 #    base_range: 0.0
 #    install_on: river_boat_0
 
-logdata: 
+controller:
+  coeffs: 0.1,0.5
+  type: pd
 
 # defines a set of initial conditions to run deterministic episodes to evaluate 
 # the learning progress of the agent without random actions. 
